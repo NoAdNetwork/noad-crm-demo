@@ -10,19 +10,25 @@ const Demo = (() => {
     (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('demo'));
   if (!enabled) return null;
 
-  const KEY = 'noad-crm-demo-v5';
+  const KEY = 'noad-crm-demo-v6';
   const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
   const FLOW = [...OPEN, 'live'];
   const RUNWAY_DAYS = 7;
   const STALE_MS = 3 * 86400000;
   const role = params.get('role') === 'manager' ? 'manager' : 'admin';
   // Сотрудники демо: текущий пользователь и два менеджера.
+  const person = (id, email, r, fullName, title, telegram) => ({ id, email, role: r, fullName, title, telegram, phone: '' });
   const STAFF = [
-    { id: 'demo', email: role === 'admin' ? 'il@noad.network' : 'demo.manager@noad.network', role },
-    { id: 'm-anna', email: 'anna.sokolova@noad.network', role: 'manager' },
-    { id: 'm-ivan', email: 'ivan.petrov@noad.network', role: 'manager' },
+    role === 'admin'
+      ? person('demo', 'il@noad.network', 'admin', 'Илья', 'Руководитель', '@il_noad')
+      : person('demo', 'demo.manager@noad.network', 'manager', '', '', ''),
+    person('m-anna', 'anna.sokolova@noad.network', 'manager', 'Анна Соколова', 'Аккаунт-менеджер', '@anna_noad'),
+    person('m-ivan', 'ivan.petrov@noad.network', 'manager', 'Иван Петров', 'Менеджер по паблишерам', '@ivan_noad'),
   ];
+  // Профили команды правятся в демо и живут вместе с остальными данными.
+  const profileOf = (managerId) => ({ ...STAFF.find((m) => m.id === managerId), ...(db?.profiles?.[managerId] || {}) });
   const emailOf = (managerId) => STAFF.find((m) => m.id === managerId)?.email || null;
+  const nameOf = (managerId) => (managerId ? profileOf(managerId).fullName || '' : '');
 
   const now = () => new Date().toISOString();
   const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
@@ -177,6 +183,7 @@ const Demo = (() => {
       openDeals: db.deals.filter((d) => d.companyId === c.id && OPEN.includes(d.stage)).length,
       managerId: c.managerId || null,
       managerEmail: emailOf(c.managerId),
+      managerName: nameOf(c.managerId),
       publisherType: c.publisherType || null,
       paymentTerms: c.paymentTerms || null,
     };
@@ -186,7 +193,7 @@ const Demo = (() => {
     const c = db.companies.find((x) => x.id === d.companyId);
     return {
       ...copy(d), companyName: c.name, companyKind: c.kind, contacts: copy(c.contacts),
-      managerId: c.managerId || null, managerEmail: emailOf(c.managerId),
+      managerId: c.managerId || null, managerEmail: emailOf(c.managerId), managerName: nameOf(c.managerId),
       publisherType: c.publisherType || null, paymentTerms: c.paymentTerms || null,
     };
   }
@@ -215,7 +222,14 @@ const Demo = (() => {
     role,
     reset() { db = seed(); persist(); },
     async me() { return { id: 'demo', role }; },
-    async staff() { return copy(STAFF); },
+    async staff() { return STAFF.map((m) => copy(profileOf(m.id))); },
+    async saveProfile(staffId, profile) {
+      if (!STAFF.some((m) => m.id === staffId)) throw new DemoError(404, 'not_found');
+      if (role !== 'admin' && staffId !== 'demo') throw new DemoError(403, 'forbidden');
+      db.profiles = { ...(db.profiles || {}), [staffId]: { ...profile } };
+      persist();
+      return copy(profileOf(staffId));
+    },
     async companies(kind) {
       return db.companies.filter((c) => !kind || c.kind === kind).sort(byName).map(companyView);
     },

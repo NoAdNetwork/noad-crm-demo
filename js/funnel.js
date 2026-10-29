@@ -71,11 +71,11 @@ const Funnel = (() => {
   // Фильтры воронки: менеджер (все / мои / конкретный), у паблишеров ещё тип и оплата.
   function filters(ctx, kind, deals) {
     const st = ctx.state;
-    const managers = [...new Map(deals.filter((d) => d.managerId).map((d) => [d.managerId, d.managerEmail])).entries()];
+    const managers = [...new Map(deals.filter((d) => d.managerId).map((d) => [d.managerId, managerName(d.managerEmail, d.managerName)])).entries()];
     const select = (name, map, value) => `<select data-filter="${name}" aria-label="${name}">${Object.entries(map)
       .map(([k, v]) => `<option value="${k}"${k === (value || '') ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
     return `<div class="filters">
-      ${select('manager', { '': 'Все менеджеры', mine: 'Мои', none: 'Без менеджера', ...Object.fromEntries(managers.map(([id, email]) => [id, managerName(email)])) }, st.manager)}
+      ${select('manager', { '': 'Все менеджеры', mine: 'Мои', none: 'Без менеджера', ...Object.fromEntries(managers) }, st.manager)}
       ${kind === 'publisher' ? select('ptype', { '': 'Все типы', ...PUBLISHER_TYPE }, st.ptype) + select('terms', { '': 'Препей и постпей', ...PAYMENT }, st.terms) : ''}
     </div>`;
   }
@@ -178,7 +178,7 @@ const Funnel = (() => {
       ${OPEN.includes(d.stage) ? stops.map((b) => `<div class="stop">${ICONS.stop}<span><b>${esc(BLOCKERS[b.type])}</b>${b.text ? ' — ' + esc(b.text) : ''} · ${SIDE[b.side]}</span></div>`).join('') : ''}
       ${OPEN.includes(d.stage) && d.nextStep ? `<div class="deal-step ${problem?.label === 'Просрочено' ? 'neg-text' : ''}">${esc(d.nextStep)}${d.nextStepOn ? ' · ' + date(d.nextStepOn) : ''}</div>` : ''}
       <div class="deal-foot">
-        <span class="who-chip" title="${esc(managerName(d.managerEmail))}">${esc(initials(d.managerEmail))}</span>
+        <span class="who-chip" title="${esc(managerName(d.managerEmail, d.managerName))}">${esc(initials(d.managerEmail, d.managerName))}</span>
         <span class="${n > STUCK_DAYS && OPEN.includes(d.stage) ? 'warn-text' : 'muted'}">${n ? days(n) : 'сегодня'}</span>
         ${OPEN.includes(d.stage) ? (ready
           ? `<button class="btn sm ready" data-next title="Перевести в «${L[next(d.stage)]}»">${L[next(d.stage)]} ${ICONS.arrow}</button>`

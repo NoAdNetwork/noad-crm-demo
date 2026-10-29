@@ -25,7 +25,7 @@ const Profile = (() => {
           <h1>${esc(c.name)}</h1>
           <p class="profile-tags">${kind === 'publisher' && c.publisherType ? PUBLISHER_TYPE[c.publisherType] : KIND[kind]} · ${tag(STATUS[c.status], STATUS_TAG[c.status])} ${health(c)}
             ${kind === 'publisher' && c.paymentTerms ? tag(PAYMENT[c.paymentTerms], c.paymentTerms === 'prepay' ? 'warn' : 'info') : ''}
-            · Менеджер: <b>${esc(managerName(c.managerEmail))}</b>
+            · Менеджер: ${c.managerId ? `<a class="link" href="#team/${c.managerId}">${esc(managerName(c.managerEmail, c.managerName))}</a>` : '<b>не назначен</b>'}
             ${c.website ? ` · <a class="link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">${esc(c.website.replace(/^https?:\/\//, ''))}</a>` : ''}</p></div>
         <div class="tools"><button class="btn" data-edit>Редактировать</button>
           <button class="btn primary" data-deal>${ICONS.plus} Новая сделка</button></div></div>

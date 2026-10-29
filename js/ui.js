@@ -98,10 +98,11 @@ const UI = (() => {
   const stageHints = (kind) => (kind === 'publisher' ? PUB_HINT : STAGE_HINT);
   const PUBLISHER_TYPE = { network: 'Нетворк', buyer: 'Баер', affiliate: 'Аффилиат' };
   const PAYMENT = { prepay: 'Препей', postpay: 'Постпей' };
-  // Имя менеджера из рабочего email: anna.petrova@… → Anna Petrova.
-  const managerName = (email) => (email ? email.split('@')[0].split(/[._-]/).filter(Boolean)
-    .map((p) => p[0].toUpperCase() + p.slice(1)).join(' ') : 'Не назначен');
-  const initials = (email) => (email ? managerName(email).split(' ').map((p) => p[0]).join('').slice(0, 2) : '—');
+  // Имя сотрудника: из профиля команды, иначе из рабочего email (anna.petrova@… → Anna Petrova).
+  const managerName = (email, fullName) => (fullName || (email ? email.split('@')[0].split(/[._-]/).filter(Boolean)
+    .map((p) => p[0].toUpperCase() + p.slice(1)).join(' ') : 'Не назначен'));
+  const initials = (email, fullName) => (email || fullName ? managerName(email, fullName).split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() : '—');
+  const ROLE = { admin: 'Администратор', manager: 'Менеджер' };
 
   function stageChecklist(d, stage = d.stage) {
     const own = d.requirements.filter((r) => r.stage === stage);
@@ -188,6 +189,7 @@ const UI = (() => {
   };
 
   ICONS['publisher-funnel'] = ICONS.funnel;
+  ICONS.team = I('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5a5 5 0 0 1 5.5 5"/>');
 
   function toast(text, error = false) {
     const el = document.createElement('div');
@@ -228,7 +230,7 @@ const UI = (() => {
   return {
     esc, money, days, date, ago, today, daysBetween, num, toast, options, drawer, tag,
     problems, health, dealProblem, ICONS, onStage, stageChecklist, activeBlockers,
-    STAGE_HINT, BLOCKERS, SIDE, stageLabels, stageHints, PUBLISHER_TYPE, PAYMENT, managerName, initials,
+    STAGE_HINT, BLOCKERS, SIDE, stageLabels, stageHints, PUBLISHER_TYPE, PAYMENT, managerName, initials, ROLE,
     STATUS, STATUS_TAG, STAGES, OPEN, FLOW, EXIT, LOST_REASONS, STUCK_DAYS, CATEGORIES, PERIODS, KIND,
   };
 })();

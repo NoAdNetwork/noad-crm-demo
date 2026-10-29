@@ -15,7 +15,7 @@ const Screens = (() => {
   };
   const managerSelect = (ctx) => `<select data-pick="manager" aria-label="Менеджер">${[
     ['', 'Все менеджеры'], ['mine', 'Мои'], ['none', 'Без менеджера'],
-    ...ctx.staff.map((s) => [s.id, managerName(s.email)]),
+    ...ctx.staff.map((s) => [s.id, managerName(s.email, s.fullName)]),
   ].map(([k, v]) => `<option value="${k}"${k === (ctx.state.manager || '') ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
   const pick = (name, map, value, all) => `<select data-pick="${name}" aria-label="${all}">${[['', all], ...Object.entries(map)]
     .map(([k, v]) => `<option value="${k}"${k === (value || '') ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
@@ -122,12 +122,12 @@ const Screens = (() => {
 
     // По менеджерам: за кем какие деньги, сделки и проблемы.
     const companies = [...advertisers, ...publishers];
-    const people = [...ctx.staff.map((m) => [m.id, m.email]), [null, null]].map(([mid, email]) => {
+    const people = [...ctx.staff.map((m) => [m.id, m.email, m.fullName, m.title]), [null, null, '', '']].map(([mid, email, fullName, title]) => {
       const own = companies.filter((c) => (c.managerId || null) === mid);
       const ownDeals = open.filter((d) => (d.managerId || null) === mid);
       const working = own.filter((c) => c.kind === 'advertiser' && c.status === 'active');
       return {
-        mid, email,
+        mid, email, fullName, title,
         clients: working.length,
         turnover: working.reduce((a, c) => a + (c.monthlySpend || 0), 0),
         publishers: own.filter((c) => c.kind === 'publisher' && c.status === 'active').length,
@@ -179,7 +179,7 @@ const Screens = (() => {
           <thead><tr><th>Менеджер</th><th class="r">Рабочих клиентов</th><th class="r">Оборот клиентов</th><th class="r">Паблишеров</th>
             <th class="r">Открытых сделок</th><th class="r">Потенциал</th><th class="r">Требуют решения</th></tr></thead>
           <tbody>${people.map((p) => `<tr class="click" data-manager="${p.mid || 'none'}">
-            <td class="name"><b>${esc(managerName(p.email))}</b><span>${esc(p.email || 'компании и сделки без менеджера')}</span></td>
+            <td class="name"><b>${esc(managerName(p.email, p.fullName))}</b><span>${esc(p.title || p.email || 'компании и сделки без менеджера')}</span></td>
             <td class="r">${p.clients}</td><td class="r nowrap">${money(p.turnover)}/мес</td><td class="r">${p.publishers}</td>
             <td class="r">${p.deals}</td><td class="r nowrap">${money(p.potential)}/мес</td>
             <td class="r">${p.issues ? `<span class="neg-text">${p.issues}</span>` : '0'}</td></tr>`).join('')}</tbody></table></div>
@@ -207,9 +207,10 @@ const Screens = (() => {
       </div>`;
     root.querySelectorAll('[data-open]').forEach((el) =>
       el.addEventListener('click', () => ctx.open(el.dataset.open, el.dataset.id)));
-    // Клик по менеджеру — его клиенты в базе.
+    // Клик по менеджеру — его страница в команде; «без менеджера» — такие клиенты в базе.
     root.querySelectorAll('[data-manager]').forEach((el) => el.addEventListener('click', () => {
-      sessionStorage.setItem('crm-manager', el.dataset.manager);
+      if (el.dataset.manager !== 'none') return void (location.hash = `team/${el.dataset.manager}`);
+      try { sessionStorage.setItem('crm-manager', 'none'); } catch (_) { /* без фильтра */ }
       location.hash = 'advertisers';
     }));
   }
@@ -284,7 +285,7 @@ const Screens = (() => {
           const low = c.alerts.includes('low_balance') || c.alerts.includes('runway');
           return `<tr class="click ${p ? 'row-' + p.level : ''} ${c.status === 'archived' ? 'archived' : ''}" data-open="company" data-id="${c.id}">
             <td class="name"><b>${esc(c.name)}</b>${c.website ? `<span>${esc(c.website.replace(/^https?:\/\//, ''))}</span>` : ''}</td>
-            <td class="nowrap ${c.managerId ? '' : 'muted'}">${esc(managerName(c.managerEmail))}</td>
+            <td class="nowrap ${c.managerId ? '' : 'muted'}">${esc(managerName(c.managerEmail, c.managerName))}</td>
             ${advertiser ? '' : `<td>${c.publisherType ? esc(PUBLISHER_TYPE[c.publisherType]) : '<span class="muted">—</span>'}</td>
               <td>${c.paymentTerms ? tag(PAYMENT[c.paymentTerms], c.paymentTerms === 'prepay' ? 'warn' : 'info') : '<span class="muted">—</span>'}</td>`}
             <td>${tag(STATUS[c.status], STATUS_TAG[c.status])}</td>
@@ -327,7 +328,7 @@ const Screens = (() => {
           ${field('website', 'Сайт', c.website, 'placeholder="https://"')}
           <div class="field"><label for="f-status">Статус</label><select id="f-status" name="status">${options(STATUS, c.status)}</select></div>
           <div class="field"><label for="f-manager">Менеджер</label><select id="f-manager" name="managerId">${options(
-            { '': 'Не назначен', ...Object.fromEntries(ctx.staff.map((m) => [m.id, managerName(m.email)])) }, c.managerId || '')}</select></div>
+            { '': 'Не назначен', ...Object.fromEntries(ctx.staff.map((m) => [m.id, managerName(m.email, m.fullName)])) }, c.managerId || '')}</select></div>
           ${kind === 'publisher' ? `
           <div class="field"><label for="f-ptype">Тип паблишера</label><select id="f-ptype" name="publisherType">${options({ '': 'Не указан', ...PUBLISHER_TYPE }, c.publisherType || '')}</select></div>
           <div class="field"><label for="f-terms">Оплата паблишеру</label><select id="f-terms" name="paymentTerms">${options({ '': 'Не указана', ...PAYMENT }, c.paymentTerms || '')}</select>

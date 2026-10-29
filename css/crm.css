@@ -324,3 +324,12 @@ tr.row-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
 .who-chip { min-width:24px; height:20px; padding:0 6px; border-radius:10px; background:var(--hover); color:var(--text-2);
   font-weight:600; font-size:11px; display:inline-grid; place-items:center; margin-right:auto; }
 .deal-foot .who-chip + span { margin-right:auto; }
+
+/* Команда */
+.person { display:flex; align-items:center; gap:10px; }
+.person .avatar { flex:none; }
+.person.big .avatar { width:48px; height:48px; font-size:var(--fs-l); }
+.person.big h1 { margin:0; }
+code { font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(--hover); padding:1px 5px; border-radius:4px; }
+.person .name b { display:block; font-weight:600; white-space:nowrap; }
+.person .name span { display:block; color:var(--text-3); font-size:var(--fs-s); }

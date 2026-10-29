@@ -4,7 +4,7 @@
 (() => {
   const app = document.getElementById('app');
   const MENU = [
-    ['Обзор', [['decisions', 'Центр решений']]],
+    ['Обзор', [['decisions', 'Центр решений'], ['team', 'Команда']]],
     ['Воронки', [['funnel', 'Рекламодатели'], ['publisher-funnel', 'Паблишеры'], ['deals', 'Все сделки']]],
     ['База', [['advertisers', 'Рекламодатели'], ['publishers', 'Паблишеры']]],
     ['Финансы', [['costs', 'Расходы', 'admin']]],
@@ -30,7 +30,7 @@
     const [hash, id] = location.hash.slice(1).split('/');
     const route = ALIASES[hash] || hash;
     const known = allowed().some(([, items]) => items.some(([k]) => k === route));
-    return known ? { route, id: ['advertisers', 'publishers'].includes(route) ? id : undefined } : { route: 'decisions' };
+    return known ? { route, id: ['advertisers', 'publishers', 'team'].includes(route) ? id : undefined } : { route: 'decisions' };
   }
 
   async function render() {
@@ -69,7 +69,8 @@
     });
     const screen = document.getElementById('screen');
     try {
-      if (id) await Profile.page(screen, ctx, route === 'advertisers' ? 'advertiser' : 'publisher', id);
+      if (route === 'team') await (id ? Team.member(screen, ctx, id) : Team.list(screen, ctx));
+      else if (id) await Profile.page(screen, ctx, route === 'advertisers' ? 'advertiser' : 'publisher', id);
       else if (route === 'funnel') await Funnel.board(screen, ctx, 'advertiser');
       else if (route === 'publisher-funnel') await Funnel.board(screen, ctx, 'publisher');
       else await Screens[route](screen, ctx);
