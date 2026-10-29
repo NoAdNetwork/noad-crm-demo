@@ -189,6 +189,7 @@ const UI = (() => {
   };
 
   ICONS['publisher-funnel'] = ICONS.funnel;
+  ICONS.offers = I('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>');
   ICONS.team = I('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5a5 5 0 0 1 5.5 5"/>');
 
   function toast(text, error = false) {

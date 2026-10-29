@@ -49,6 +49,12 @@ const Api = (() => {
     saveCompany: (c) => save('/companies', c),
     deals: () => request('GET', '/deals'),
     saveDeal: (d) => save('/deals', d),
+    offers: () => request('GET', '/offers'),
+    saveOffer: (o) => save('/offers', o),
+    savePlacement: (offerId, publisherId, body) => request('PUT', `/offers/${offerId}/placements/${publisherId}`, body),
+    importSheet: (sheet) => request('POST', '/import/sheet', sheet),
+    binomMoney: (start, end) => request('GET', `/binom/money?start=${start}&end=${end}`),
+    binomOffers: () => request('GET', '/binom/offers'),
     costs: () => request('GET', '/costs'),
     saveCost: (c) => save('/costs', c),
   };

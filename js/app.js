@@ -5,6 +5,7 @@
   const app = document.getElementById('app');
   const MENU = [
     ['Обзор', [['decisions', 'Центр решений'], ['team', 'Команда']]],
+    ['Трафик', [['offers', 'Офферы и сети']]],
     ['Воронки', [['funnel', 'Рекламодатели'], ['publisher-funnel', 'Паблишеры'], ['deals', 'Все сделки']]],
     ['База', [['advertisers', 'Рекламодатели'], ['publishers', 'Паблишеры']]],
     ['Финансы', [['costs', 'Расходы', 'admin']]],
@@ -18,8 +19,8 @@
     app.innerHTML = `<div class="login"><div class="login-box">
       <div class="brand-mark">${UI.ICONS.mark}</div>
       <h1>CRM noad.network</h1>
-      <p class="sub">Вход для сотрудников через Google Workspace</p>
-      <a class="btn primary" href="/auth/staff/login">Войти через Google</a></div></div>`;
+      <p class="sub">Вход для сотрудников</p>
+      <a class="btn primary" href="/sign-in">Войти</a></div></div>`;
   }
 
   const allowed = () => MENU.map(([title, items]) => [title, items.filter(([, , role]) => !role || me.role === role)])
@@ -54,6 +55,10 @@
           ${items.map(([k, label]) => `<a class="nav${k === route ? ' on' : ''}" href="#${k}" title="${label}">
             ${UI.ICONS[k]}<span class="label">${label}</span><span data-count="${k}"></span></a>`).join('')}
         </nav>`).join('')}
+        ${Api.demo ? '' : `<nav class="nav-group" aria-label="Платформа">
+          <div class="nav-title">Платформа</div>
+          <a class="nav" href="/advertisers" title="Аккаунты рекламодателей">${UI.ICONS.advertisers}<span class="label">Аккаунты рекламодателей</span></a>
+        </nav>`}
         <div class="side-foot">
           ${Api.demo ? '<div class="demo-flag"><span class="tag warn">Демо: данные в браузере</span></div>' : ''}
           <div class="who"><div class="avatar">${me.role === 'admin' ? 'A' : 'M'}</div>
@@ -71,6 +76,7 @@
     try {
       if (route === 'team') await (id ? Team.member(screen, ctx, id) : Team.list(screen, ctx));
       else if (id) await Profile.page(screen, ctx, route === 'advertisers' ? 'advertiser' : 'publisher', id);
+      else if (route === 'offers') await Offers.matrix(screen, ctx);
       else if (route === 'funnel') await Funnel.board(screen, ctx, 'advertiser');
       else if (route === 'publisher-funnel') await Funnel.board(screen, ctx, 'publisher');
       else await Screens[route](screen, ctx);

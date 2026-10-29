@@ -10,7 +10,7 @@ const Demo = (() => {
     (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('demo'));
   if (!enabled) return null;
 
-  const KEY = 'noad-crm-demo-v6';
+  const KEY = 'noad-crm-demo-v7';
   const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
   const FLOW = [...OPEN, 'live'];
   const RUNWAY_DAYS = 7;
@@ -148,7 +148,38 @@ const Demo = (() => {
         cost('infrastructure', 'DigitalOcean', 180),
         cost('infrastructure', 'Zitadel Cloud', 100),
       ],
+      ...seedOffers({ acme, beta, game, propeller, exo, adsterra, buyers }),
     };
+  }
+
+  // Вымышленные офферы, их «офферы Бинома» и размещения в сетях — для матрицы и денег.
+  function seedOffers({ acme, beta, game, propeller, exo, adsterra, buyers }) {
+    let next = 1000;
+    const binom = [];
+    const offer = (company, name, terms, geos, cells) => {
+      const o = { id: id(), companyId: company.id, name, terms, status: 'active', placements: [], binomOfferIds: [], updatedAt: now() };
+      for (const g of geos) {
+        next += 1;
+        binom.push({ binomId: next, name: `${company.name} ${name} ${g}`.trim(), network: company.name, companyId: company.id, offerId: o.id });
+        o.binomOfferIds.push(next);
+      }
+      for (const [pub, status, note] of cells) o.placements.push({ publisherId: pub.id, status, note: note || '' });
+      return o;
+    };
+    const offers = [
+      offer(acme, 'VPN iOS Multigeo', '$1.5–6 CPA по гео, без капы', ['US', 'BR', 'JP', 'DE'],
+        [[propeller, 'live', ''], [exo, 'live', '50 daily'], [adsterra, 'wait', 'wait'], [buyers, 'restart', 'перезапустить']]),
+      offer(acme, 'VPN Android US', '$3 CPI, 200 daily', ['US'],
+        [[propeller, 'not_compliant', 'не комплаент'], [exo, 'live', '25 daily'], [adsterra, 'limit', 'гео занято']]),
+      offer(beta, 'Cleaner app Tier-1', '$4 CPI iOS, 100$ total cap', ['US', 'GB'],
+        [[propeller, 'no_cap', 'no cap left'], [exo, 'live', '100$ total'], [buyers, 'wait', 'wait']]),
+      offer(game, 'Casino ID 3$ CPL', '$3 CPL, 200$ daily cap', ['ID'],
+        [[propeller, 'live', '100$ daily'], [exo, 'skip', 'не берут гемблу по CPA'], [adsterra, 'not_converting', 'не конвертит']]),
+    ];
+    // Свободный оффер в Биноме: трафик идёт, но строки в матрице нет.
+    next += 1;
+    binom.push({ binomId: next, name: 'BetaApps Cleaner app MX', network: beta.name, companyId: beta.id, offerId: null });
+    return { offers, binom };
   }
 
   function load() {
@@ -276,6 +307,83 @@ const Demo = (() => {
         persist();
       }
       return dealView(saved);
+    },
+    async offers() {
+      return db.offers.map((o) => ({
+        ...copy(o), companyName: db.companies.find((c) => c.id === o.companyId)?.name,
+        binomOfferIds: db.binom.filter((b) => b.offerId === o.id).map((b) => b.binomId),
+      }));
+    },
+    async saveOffer(input) {
+      required(input.name, 'name');
+      const company = db.companies.find((c) => c.id === input.companyId && c.kind === 'advertiser');
+      if (!company) throw new DemoError(404, 'not_found');
+      const old = db.offers.find((o) => o.id === input.id);
+      const saved = upsert(db.offers, { ...input, placements: old?.placements || [] });
+      for (const b of db.binom) {
+        if (b.offerId === saved.id) b.offerId = null;
+        if ((input.binomOfferIds || []).includes(b.binomId)) b.offerId = saved.id;
+      }
+      persist();
+      return (await this.offers()).find((o) => o.id === saved.id);
+    },
+    async savePlacement(offerId, publisherId, { status, note }) {
+      const o = db.offers.find((x) => x.id === offerId);
+      if (!o) throw new DemoError(404, 'not_found');
+      o.placements = o.placements.filter((p) => p.publisherId !== publisherId);
+      if (status) o.placements.push({ publisherId, status, note: note || '' });
+      persist();
+      return (await this.offers()).find((x) => x.id === offerId);
+    },
+    async importSheet({ networks, rows }) {
+      const out = { advertisers: 0, publishers: 0, offers: 0, placements: 0 };
+      const norm = (x) => x.toLowerCase().replace(/[^0-9a-zа-яё]/gi, '');
+      const company = (kind, name) => {
+        let c = db.companies.find((x) => x.kind === kind && norm(x.name) === norm(name));
+        if (!c) {
+          c = upsert(db.companies, { kind, name, status: 'active', contacts: [], notes: '', website: '', balance: null, monthlySpend: null, lowBalance: null, managerId: 'demo' });
+          out[kind + 's'] += 1;
+        }
+        return c;
+      };
+      const pubs = networks.map((n) => (n.trim() ? company('publisher', n) : null));
+      for (const r of rows) {
+        const adv = company('advertiser', r.advertiser);
+        let o = db.offers.find((x) => x.companyId === adv.id && norm(x.name) === norm(r.offer));
+        if (!o) { o = upsert(db.offers, { companyId: adv.id, name: r.offer, terms: r.offer, status: 'active', placements: [] }); out.offers += 1; }
+        pubs.forEach((p, i) => {
+          const parsed = p && Offers.parseCell(r.cells[i] || '');
+          if (!parsed) return;
+          o.placements = o.placements.filter((x) => x.publisherId !== p.id).concat({ publisherId: p.id, status: parsed[0], note: parsed[1] });
+          out.placements += 1;
+        });
+      }
+      persist();
+      return out;
+    },
+    async binomOffers() { return copy(db.binom); },
+    // Деньги «из Бинома» в демо: стабильные псевдослучайные суммы по запущенным ячейкам.
+    async binomMoney(start, end) {
+      const days = [], cells = {}, unlinked = {};
+      const rnd = (seed) => { let h = 0; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (h % 1000) / 1000; };
+      for (let t = new Date(start + 'T00:00:00Z'); t <= new Date(end + 'T00:00:00Z'); t = new Date(t.getTime() + 86400000)) {
+        const day = t.toISOString().slice(0, 10);
+        const total = { day, clicks: 0, leads: 0, revenue: 0, cost: 0, profit: 0 };
+        const add = (bucket, revenue, margin) => {
+          const cost = Math.round(revenue * (1 - margin) * 100) / 100;
+          bucket.revenue = (bucket.revenue || 0) + revenue; bucket.cost = (bucket.cost || 0) + cost;
+          bucket.profit = (bucket.profit || 0) + revenue - cost; bucket.leads = (bucket.leads || 0) + Math.round(revenue / 3);
+          bucket.clicks = (bucket.clicks || 0) + Math.round(revenue * 900);
+          total.revenue += revenue; total.cost += cost; total.profit += revenue - cost;
+        };
+        for (const o of db.offers) for (const p of o.placements.filter((x) => x.status === 'live')) {
+          add(cells[`${o.id}|${p.publisherId}`] ||= { offerId: o.id, publisherId: p.publisherId }, Math.round(40 + rnd(o.id + p.publisherId + day) * 220), 0.15 + rnd(day + o.id) * 0.12);
+        }
+        for (const b of db.binom.filter((x) => !x.offerId)) add(unlinked[b.binomId] ||= {}, Math.round(20 + rnd(day + b.binomId) * 60), 0.18);
+        days.push(total);
+      }
+      const round = (b) => Object.fromEntries(Object.entries(b).map(([k, v]) => [k, typeof v === 'number' ? Math.round(v * 100) / 100 : v]));
+      return { from: start, to: end, syncedAt: now(), days: days.map(round), companies: {}, cells: Object.values(cells).map(round), unlinkedOffers: Object.fromEntries(Object.entries(unlinked).map(([k, v]) => [k, round(v)])) };
     },
     async costs() {
       adminOnly();

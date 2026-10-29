@@ -333,3 +333,34 @@ tr.row-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
 code { font-family:ui-monospace,Menlo,monospace; font-size:.92em; background:var(--hover); padding:1px 5px; border-radius:4px; }
 .person .name b { display:block; font-weight:600; white-space:nowrap; }
 .person .name span { display:block; color:var(--text-3); font-size:var(--fs-s); }
+
+/* Офферы x сети: цвета ячеек как в рабочей таблице — зелёный «запущено», розовый — нет */
+.matrix-card { overflow:hidden; }
+.matrix { font-size:var(--fs-s); }
+.matrix th, .matrix td { border-right:1px solid var(--border); }
+.matrix th { white-space:nowrap; }
+.matrix .sticky { position:sticky; left:0; background:var(--surface); z-index:1; min-width:260px; max-width:340px;
+  white-space:normal; box-shadow:1px 0 0 var(--border); }
+.matrix tr.group .sticky { background:var(--surface-2); }
+.matrix .offer-cell { cursor:pointer; }
+.matrix .offer-cell b { display:block; }
+.matrix .offer-cell span { display:block; color:var(--text-3); font-size:var(--fs-xs); }
+.matrix .offer-cell:hover b { text-decoration:underline; }
+.matrix td.pl { min-width:96px; cursor:pointer; vertical-align:top; padding:8px 10px; }
+.matrix td.pl:hover { outline:2px solid var(--ink); outline-offset:-2px; }
+.matrix td.pl b { display:block; font-weight:600; }
+.matrix td.pl span { display:block; font-size:var(--fs-xs); color:var(--text-2); }
+.matrix td.pl em { display:block; font-style:normal; font-size:var(--fs-xs); font-weight:600; margin-top:2px; color:var(--pos); }
+.matrix td.pl em.neg-text { color:var(--neg); }
+.pl-live { background:#DDF3E6; }
+.pl-live b { color:var(--pos); }
+.pl-wait, .pl-restart, .pl-wait_geo, .pl-no_cap, .pl-limit, .pl-other { background:#FBE4E2; }
+.pl-not_compliant, .pl-skip, .pl-not_converting { background:#F6D3D0; }
+.pl-not_compliant b, .pl-skip b, .pl-not_converting b { color:var(--neg); }
+.matrix.small td, .matrix.small th { padding:4px 6px; font-size:var(--fs-xs); }
+.sheet-input { min-height:140px; font-family:ui-monospace,Menlo,monospace; font-size:var(--fs-xs); }
+.check-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-sm); padding:4px 8px; }
+.check-row { display:flex; gap:8px; align-items:center; padding:5px 0; border-bottom:1px solid var(--border); font-size:var(--fs-s); }
+.check-row:last-child { border-bottom:0; }
+.check-row span:first-of-type { flex:1; }
+.page-head .tools select { width:auto; min-width:150px; }

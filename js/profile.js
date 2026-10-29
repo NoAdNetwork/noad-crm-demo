@@ -38,7 +38,10 @@ const Profile = (() => {
           <div class="kpi-note">сверен: ${c.balance === null ? '—' : ago(c.balanceCheckedAt)}</div></div>
         <div class="kpi"><div class="kpi-label">${kind === 'advertiser' ? 'Оборот' : 'Закупка'}</div>
           <div class="kpi-value">${money(c.monthlySpend)}<small>/мес</small></div>
-          <div class="kpi-note">${daily ? money(daily) + ' в день' : 'не указан'}</div></div>
+          <div class="kpi-note">${daily ? money(daily) + ' в день' : 'не указан'}${c.binom && c.manualMonthlySpend == null ? ' · по Биному за 30 дней' : ''}</div></div>
+        ${c.binom ? `<div class="kpi"><div class="kpi-label">Прибыль за 30 дней</div>
+          <div class="kpi-value ${c.binom.profit < 0 ? 'neg-text' : ''}">${money(c.binom.profit)}</div>
+          <div class="kpi-note">по Биному: оборот ${money(c.binom.revenue)}, закупка ${money(c.binom.cost)}</div></div>` : ''}
         <div class="kpi"><div class="kpi-label">Денег хватит на</div>
           <div class="kpi-value">${c.runwayDays === null ? '—' : c.runwayDays <= 0 ? '&lt; 1 дня' : days(c.runwayDays)}</div>
           <div class="kpi-note">тревога ниже ${money(c.lowBalance)} или &lt; 7 дней</div></div>

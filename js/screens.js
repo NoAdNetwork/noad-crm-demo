@@ -57,8 +57,10 @@ const Screens = (() => {
   /* ── Центр решений ──────────────────────────────────── */
 
   async function decisions(root, ctx) {
-    const [s, advertisers, publishers, deals] = await Promise.all([
+    const [month0, today0] = Offers.period('month');
+    const [s, advertisers, publishers, deals, cash] = await Promise.all([
       Api.summary(), Api.companies('advertiser'), Api.companies('publisher'), Api.deals(),
+      Api.binomMoney(month0, today0).catch(() => null),
     ]);
     const adv = s.advertisers, pub = s.publishers, pipe = s.pipeline;
     const runwayOf = (balance, monthly) => (monthly ? Math.floor(balance / (monthly / 30)) : null);
@@ -86,7 +88,30 @@ const Screens = (() => {
     const netDay = grossDay - costDay;
     const marginPct = adv.monthlySpend ? Math.round(((grossDay * 30) / adv.monthlySpend) * 100) : null;
     const signed = (v) => `<span class="${v < 0 ? 'neg-text' : ''}">${v < 0 ? '−' : ''}${money(Math.abs(Math.round(v)))}</span>`;
-    const profit = costs ? `
+    // Факт из Бинома, когда синк работает: прибыль по дням текущего месяца минус расходы компании.
+    const fact = cash && cash.days.length ? (() => {
+      const sum = (key, list) => list.reduce((a, d) => a + d[key], 0);
+      const byDay = Object.fromEntries(cash.days.map((d) => [d.day, d]));
+      const iso = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+      const gross = sum('profit', cash.days);
+      const avg = gross / elapsed;
+      return { gross, revenue: sum('revenue', cash.days), cost: sum('cost', cash.days), avg,
+        today: byDay[iso(0)]?.profit || 0, yesterday: byDay[iso(1)]?.profit || 0 };
+    })() : null;
+    const factBlock = fact ? `
+      <div class="profit">
+        <div class="profit-item"><div class="kpi-label">${costs ? 'Чистая' : 'Валовая'} прибыль за ${monthName}</div>
+          <div class="profit-value">${signed(fact.gross - costDay * elapsed)}</div>
+          <div class="kpi-note">валовая ${signed(fact.gross)}${costs ? ` − расходы ${money(Math.round(costDay * elapsed))}` : ''} · ${days(elapsed)}</div></div>
+        <div class="profit-item"><div class="kpi-label">${costs ? 'Чистая' : 'Валовая'} прибыль в день</div>
+          <div class="profit-value">${signed(fact.avg - costDay)}</div>
+          <div class="kpi-note">вчера ${signed(fact.yesterday - costDay)} · сегодня пока ${signed(fact.today)}</div></div>
+        <div class="profit-item"><div class="kpi-label">Прогноз за ${monthName}</div>
+          <div class="profit-value">${signed((fact.avg - costDay) * monthDays)}</div>
+          <div class="kpi-note">оборот ${money(fact.revenue)} · закупка ${money(fact.cost)} · маржа ${fact.revenue ? Math.round((fact.gross / fact.revenue) * 100) : 0}%</div></div>
+        <p class="profit-note">Факт по Биному${cash.syncedAt ? ` на ${new Date(cash.syncedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}: что заплатили рекламодатели − что заплатили сетям${costs ? ' − расходы компании из раздела «Расходы»' : ''}.</p>
+      </div>` : '';
+    const profit = factBlock || (costs ? `
       <div class="profit">
         <div class="profit-item"><div class="kpi-label">Чистая прибыль за ${monthName}</div>
           <div class="profit-value">${signed(netDay * elapsed)}</div>
@@ -105,7 +130,7 @@ const Screens = (() => {
         <div class="profit-item"><div class="kpi-label">Валовая прибыль в день сейчас</div>
           <div class="profit-value">${signed(grossDay)}</div><div class="kpi-note">маржа ${marginPct === null ? '—' : marginPct + '%'} от оборота</div></div>
         <p class="profit-note">Оценка: оборот рекламодателей − закупка трафика в сетях. Чистую прибыль с расходами компании видит администратор.</p>
-      </div>`;
+      </div>`);
 
     // На чём стоим: активные стопперы открытых сделок по типам — вопросы к правлению.
     const stops = {};
@@ -336,7 +361,9 @@ const Screens = (() => {
         </div></div>
         <div class="block"><div class="block-title">Деньги, USD ${c.balance !== null && id ? `<span class="sub">баланс сверен: ${ago(c.balanceCheckedAt)}</span>` : ''}</div><div class="form">
           ${field('balance', kind === 'advertiser' ? 'Баланс клиента' : 'Наш баланс в сети', c.balance, 'type="number" step="0.01"')}
-          ${field('monthlySpend', kind === 'advertiser' ? 'Оборот в месяц' : 'Закупка в месяц', c.monthlySpend, 'type="number" step="0.01" min="0"')}
+          ${field('monthlySpend', kind === 'advertiser' ? 'Оборот в месяц' : 'Закупка в месяц',
+            c.manualMonthlySpend !== undefined ? c.manualMonthlySpend : c.monthlySpend, 'type="number" step="0.01" min="0"' + (c.binom ? ' placeholder="из Бинома"' : ''),
+            c.binom ? `Пусто — берём из Бинома: ${money(kind === 'advertiser' ? c.binom.revenue : c.binom.cost)} за 30 дней` : '')}
           ${field('lowBalance', 'Тревога, если баланс ниже', c.lowBalance, 'type="number" step="0.01" min="0"', 'А также если денег меньше чем на 7 дней')}
           ${field('runway', 'Денег хватит на', runway(c.runwayDays), 'disabled')}
         </div></div>
