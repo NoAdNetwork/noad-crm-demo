@@ -6,6 +6,7 @@ const Screens = (() => {
   const {
     esc, money, days, date, ago, today, daysBetween, num, options, drawer, tag,
     problems, health, dealProblem, ICONS, STATUS, STATUS_TAG, STAGES, OPEN, CATEGORIES, PERIODS, KIND,
+    activeBlockers, BLOCKERS, SIDE,
   } = UI;
 
   const failure = (error) => {
@@ -63,8 +64,54 @@ const Screens = (() => {
     const pubRunway = runwayOf(pub.balance, pub.monthlySpend);
     const stamp = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 
+    // Прибыль — оценка по оборотам из карточек: рекламодатели платят нам, мы платим сетям,
+    // сверху расходы компании. День = месяц / 30, как и запас денег в днях.
+    const now = new Date();
+    const elapsed = now.getDate();
+    const monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const monthName = now.toLocaleDateString('ru-RU', { month: 'long' });
+    const grossDay = (adv.monthlySpend - pub.monthlySpend) / 30;
+    const costDay = costs ? costs.monthly / 30 : 0;
+    const netDay = grossDay - costDay;
+    const marginPct = adv.monthlySpend ? Math.round(((grossDay * 30) / adv.monthlySpend) * 100) : null;
+    const signed = (v) => `<span class="${v < 0 ? 'neg-text' : ''}">${v < 0 ? '−' : ''}${money(Math.abs(Math.round(v)))}</span>`;
+    const profit = costs ? `
+      <div class="profit">
+        <div class="profit-item"><div class="kpi-label">Чистая прибыль за ${monthName}</div>
+          <div class="profit-value">${signed(netDay * elapsed)}</div>
+          <div class="kpi-note">с 1 по ${elapsed} ${now.toLocaleDateString('ru-RU', { month: 'long', day: 'numeric' }).split(' ')[1]} · ${days(elapsed)}</div></div>
+        <div class="profit-item"><div class="kpi-label">Чистая прибыль в день сейчас</div>
+          <div class="profit-value">${signed(netDay)}</div>
+          <div class="kpi-note">валовая ${signed(grossDay)} − расходы ${money(Math.round(costDay))}</div></div>
+        <div class="profit-item"><div class="kpi-label">Прогноз за ${monthName}</div>
+          <div class="profit-value">${signed(netDay * monthDays)}</div>
+          <div class="kpi-note">валовая маржа ${marginPct === null ? '—' : marginPct + '%'} от оборота</div></div>
+        <p class="profit-note">Оценка по текущим оборотам из карточек: оборот рекламодателей − закупка трафика в сетях − расходы компании. Не факт из трекера.</p>
+      </div>` : `
+      <div class="profit">
+        <div class="profit-item"><div class="kpi-label">Валовая прибыль за ${monthName}</div>
+          <div class="profit-value">${signed(grossDay * elapsed)}</div><div class="kpi-note">с 1-го числа · ${days(elapsed)}</div></div>
+        <div class="profit-item"><div class="kpi-label">Валовая прибыль в день сейчас</div>
+          <div class="profit-value">${signed(grossDay)}</div><div class="kpi-note">маржа ${marginPct === null ? '—' : marginPct + '%'} от оборота</div></div>
+        <p class="profit-note">Оценка: оборот рекламодателей − закупка трафика в сетях. Чистую прибыль с расходами компании видит администратор.</p>
+      </div>`;
+
+    // На чём стоим: активные стопперы открытых сделок по типам — вопросы к правлению.
+    const stops = {};
+    for (const d of open) {
+      for (const b of activeBlockers(d)) {
+        const g = (stops[b.type] ||= { count: 0, value: 0, us: 0, deals: [] });
+        g.count += 1;
+        g.value += d.value || 0;
+        if (b.side === 'us') g.us += 1;
+        g.deals.push(d.companyName);
+      }
+    }
+    const stopRows = Object.entries(stops).sort((a, b) => b[1].value - a[1].value);
+
     root.innerHTML = `
       ${head('Центр решений', `Положение на ${stamp}`)}
+      ${profit}
       <div class="kpis">
         ${kpi('Оборот рекламодателей', perMonth(adv.monthlySpend), `${adv.active} ${adv.active === 1 ? 'рабочий клиент' : 'рабочих клиентов'}`)}
         ${kpi('Деньги клиентов на балансах', money(adv.balance), advRunway === null ? 'расход не указан' : `≈ ${days(advRunway)} работы при текущем обороте`)}
@@ -85,6 +132,17 @@ const Screens = (() => {
             <td class="action">${esc(i.action)}</td></tr>`).join('')}</tbody></table></div>`
           : `<div class="ok-box">${ICONS.check} Все рабочие клиенты и сети при деньгах, просроченных шагов нет.</div>`}
       </div>
+
+      ${stopRows.length ? `<div class="card">
+        <div class="card-head"><div><h2>На чём стоим</h2><p>Стопперы открытых сделок: что нужно решить, чтобы сделки пошли дальше</p></div>
+          <a class="btn sm" href="#funnel">Воронка</a></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Стоппер</th><th class="r">Сделок</th><th class="r">Ждёт в месяц</th><th>За кем</th><th>Компании</th></tr></thead>
+          <tbody>${stopRows.map(([type, g]) => `<tr>
+            <td><b>${esc(BLOCKERS[type])}</b></td><td class="r">${g.count}</td><td class="r nowrap">${money(g.value)}</td>
+            <td class="nowrap">${g.us === g.count ? SIDE.us : g.us ? `${g.us} за нами, ${g.count - g.us} за клиентом` : SIDE.client}</td>
+            <td>${esc([...new Set(g.deals)].join(', '))}</td></tr>`).join('')}</tbody></table></div>
+      </div>` : ''}
 
       <div class="grid-2">
         <div class="card">

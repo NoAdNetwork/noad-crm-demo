@@ -10,7 +10,7 @@ const Demo = (() => {
     (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('demo'));
   if (!enabled) return null;
 
-  const KEY = 'noad-crm-demo-v2';
+  const KEY = 'noad-crm-demo-v4';
   const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
   const FLOW = [...OPEN, 'live'];
   const RUNWAY_DAYS = 7;
@@ -29,21 +29,21 @@ const Demo = (() => {
       ...money, ...extra, updatedAt: now(),
     });
     const acme = c('advertiser', 'Acme Media', 'active',
-      { balance: 420, monthlySpend: 9000, lowBalance: 1000, balanceCheckedAt: daysAgo(0) },
+      { balance: 420, monthlySpend: 14000, lowBalance: 1000, balanceCheckedAt: daysAgo(0) },
       [{ name: 'Анна Петрова', role: 'Media buyer', email: 'anna@acme.io', telegram: '@anna_p', phone: '' }],
       { website: 'https://acme.io' });
     const beta = c('advertiser', 'BetaApps', 'active',
-      { balance: 18500, monthlySpend: 12000, lowBalance: 2000, balanceCheckedAt: daysAgo(1) },
+      { balance: 18500, monthlySpend: 22000, lowBalance: 2000, balanceCheckedAt: daysAgo(1) },
       [{ name: 'Олег', role: 'CEO', email: '', telegram: '@oleg_b', phone: '' }]);
     const game = c('advertiser', 'GameHub', 'active',
-      { balance: 6400, monthlySpend: 4000, lowBalance: 500, balanceCheckedAt: daysAgo(5) });
+      { balance: 6400, monthlySpend: 7000, lowBalance: 500, balanceCheckedAt: daysAgo(5) });
     const vpn = c('advertiser', 'VPN Shield', 'prospect', {},
       [{ name: 'Mark', role: 'Affiliate manager', email: 'mark@vpnshield.example', telegram: '', phone: '' }]);
     const propeller = c('publisher', 'PropellerAds', 'active',
-      { balance: 2300, monthlySpend: 15000, lowBalance: 3000, balanceCheckedAt: daysAgo(0) },
+      { balance: 2300, monthlySpend: 20000, lowBalance: 3000, balanceCheckedAt: daysAgo(0) },
       [{ name: 'Account manager', role: '', email: '', telegram: '@propeller_am', phone: '' }]);
     const exo = c('publisher', 'ExoClick', 'active',
-      { balance: 9800, monthlySpend: 6000, lowBalance: 2000, balanceCheckedAt: daysAgo(1) });
+      { balance: 9800, monthlySpend: 10000, lowBalance: 2000, balanceCheckedAt: daysAgo(1) });
     const adsterra = c('publisher', 'Adsterra', 'prospect');
     const coin = c('advertiser', 'CoinPulse', 'prospect', {},
       [{ name: 'Дмитрий', role: 'Head of UA', email: '', telegram: '@dima_cp', phone: '' }]);
@@ -60,10 +60,11 @@ const Demo = (() => {
       const history = path.map((stage, i) => ({ stage, enteredAt: daysAgo(total - i * every) }));
       return {
         id: id(), companyId: company.id, title, stage: path[path.length - 1], value: null, pricingModel: '',
-        requirements: [], nextStep: '', nextStepOn: null, lostReason: '', ...extra,
+        requirements: [], nextStep: '', nextStepOn: null, lostReason: '', blockers: [], ...extra,
         history, stageChangedAt: history[history.length - 1].enteredAt, updatedAt: now(),
       };
     };
+    const stop = (type, text, side = 'us', ago = 3) => ({ id: id(), type, text, side, createdAt: daysAgo(ago), resolvedAt: null });
     const upTo = (stage) => FLOW.slice(0, FLOW.indexOf(stage) + 1);
     const cost = (category, name, amount, period = 'monthly') => ({
       id: id(), category, name, amount, period, active: true, notes: '', updatedAt: now(),
@@ -76,15 +77,21 @@ const Demo = (() => {
         d(coin, 'CoinPulse — крипто-приложение', upTo('qualification'), {
           value: 15000, pricingModel: 'CPA', nextStep: 'Проверить лицензию и гео', nextStepOn: day(1),
           requirements: [r('Вертикаль и гео нам подходят', 'qualification', true), r('Проверка компании пройдена', 'qualification')],
+          blockers: [stop('ad_account', 'Нужен кабинет в PropellerAds с допуском крипто-вертикали', 'us', 4)],
         }),
         d(vpn, 'VPN Shield — push CPA', upTo('negotiation'), {
           value: 8000, pricingModel: 'CPA', nextStep: 'Согласовать payout', nextStepOn: day(-2),
           requirements: [r('Согласованы модель оплаты и ставка', 'negotiation'), r('Согласована наша наценка', 'negotiation')],
+          blockers: [stop('pricing_model', 'Работают только по CPA, мы стартуем с CPM', 'us', 6)],
         }),
-        d(dating, 'LoveMatch — дейтинг, Tier-1', upTo('negotiation'), { value: 6000, pricingModel: 'CPM' }, 3, 18),
+        d(dating, 'LoveMatch — дейтинг, Tier-1', upTo('negotiation'), {
+          value: 6000, pricingModel: 'CPM',
+          blockers: [stop('pricing_model', 'Хотят CPA с холдом 30 дней', 'us', 10)],
+        }, 3, 18),
         d(bet, 'BetZone — беттинг, LATAM', upTo('contract'), {
           value: 10000, pricingModel: 'CPA', nextStep: 'Получить предоплату', nextStepOn: day(3),
           requirements: [r('Договор подписан', 'contract', true), r('Предоплата получена', 'contract')],
+          blockers: [stop('payment', 'Ждём предоплату 5 000 $', 'client', 2)],
         }),
         d(acme, 'Acme — расширение на LATAM', upTo('setup'), {
           value: 5000, pricingModel: 'CPM', nextStep: 'Настроить постбек', nextStepOn: day(1),
@@ -199,11 +206,14 @@ const Demo = (() => {
       if (!company) throw new DemoError(404, 'not_found');
       const old = db.deals.find((x) => x.id === input.id);
       const moved = !old || old.stage !== input.stage;
+      const forward = old && FLOW.includes(old.stage) && FLOW.indexOf(input.stage) > FLOW.indexOf(old.stage);
+      if (forward && (input.blockers || []).some((b) => !b.resolvedAt)) throw new DemoError(409, 'blocked');
       const { companyName, companyKind, contacts, ...data } = input;
       const history = [...(old?.history || [])];
       if (moved) history.push({ stage: data.stage, enteredAt: now() });
       const saved = upsert(db.deals, {
-        ...data, history, lostReason: data.stage === 'lost' ? data.lostReason || '' : '',
+        ...data, blockers: (data.blockers || []).map((b) => ({ ...b, createdAt: b.createdAt || now() })),
+        history, lostReason: data.stage === 'lost' ? data.lostReason || '' : '',
         stageChangedAt: moved ? now() : old.stageChangedAt,
       });
       if (moved && data.stage === 'live' && company.status === 'prospect') {

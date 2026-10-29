@@ -4,8 +4,8 @@
 
 const Funnel = (() => {
   const {
-    esc, money, days, date, num, options, drawer, tag, dealProblem, onStage, stageChecklist,
-    ICONS, STAGES, OPEN, FLOW, LOST_REASONS, STUCK_DAYS, KIND,
+    esc, money, days, date, num, options, drawer, tag, dealProblem, onStage, stageChecklist, activeBlockers,
+    ICONS, STAGES, OPEN, FLOW, LOST_REASONS, STUCK_DAYS, KIND, STAGE_HINT, BLOCKERS, SIDE,
   } = UI;
 
   const next = (stage) => FLOW[FLOW.indexOf(stage) + 1];
@@ -28,12 +28,20 @@ const Funnel = (() => {
     if (stage === deal.stage) return;
     if (stage === 'lost') return lostForm(ctx, deal);
     const forward = FLOW.indexOf(stage) > FLOW.indexOf(deal.stage);
+    const stop = activeBlockers(deal)[0];
+    if (forward && FLOW.includes(deal.stage) && stop) {
+      UI.toast(`Стоппер: ${BLOCKERS[stop.type]}. Сначала снимите его`, true);
+      return ctx.refresh();
+    }
     const open = stageChecklist(deal).filter((r) => !r.done);
     if (forward && deal.stage !== 'lost' && open.length &&
         !confirm(`На этапе «${STAGES[deal.stage]}» не выполнено:\n— ${open.map((r) => r.text).join('\n— ')}\n\nВсё равно перевести в «${STAGES[stage]}»?`)) {
       return ctx.refresh();
     }
-    move(ctx, deal, stage).catch((e) => UI.toast(e.message, true));
+    move(ctx, deal, stage).catch((e) => {
+      UI.toast(e.status === 409 ? 'Сделка на стоппере: сначала снимите его' : 'Не удалось перевести', true);
+      ctx.refresh();
+    });
   }
 
   function lostForm(ctx, deal) {
@@ -65,6 +73,7 @@ const Funnel = (() => {
     const open = all.filter((d) => OPEN.includes(d.stage));
     const live = all.filter((d) => d.stage === 'live');
     const stuck = open.filter((d) => dealProblem(d));
+    const blocked = open.filter((d) => activeBlockers(d).length);
     const cycle = live.map((d) => {
       const start = d.history[0]?.enteredAt;
       const end = [...d.history].reverse().find((h) => h.stage === 'live')?.enteredAt;
@@ -82,7 +91,8 @@ const Funnel = (() => {
         <div class="kpi"><div class="kpi-label">В воронке</div><div class="kpi-value">${open.length}</div><div class="kpi-note">потенциал ${money(open.reduce((a, d) => a + (d.value || 0), 0))}/мес</div></div>
         <div class="kpi"><div class="kpi-label">Конверсия в «Работает»</div><div class="kpi-value">${pct(live.length, closed.length)}</div><div class="kpi-note">${live.length} запущено из ${closed.length} закрытых</div></div>
         <div class="kpi"><div class="kpi-label">Срок от лида до запуска</div><div class="kpi-value">${avgCycle === null ? '—' : days(avgCycle)}</div><div class="kpi-note">в среднем по запущенным</div></div>
-        <div class="kpi ${stuck.length ? 'neg' : ''}"><div class="kpi-label">Требуют внимания</div><div class="kpi-value">${stuck.length}</div><div class="kpi-note">просрочен шаг или > ${STUCK_DAYS} дней на этапе</div></div>
+        <div class="kpi ${blocked.length ? 'neg' : ''}"><div class="kpi-label">Стоят на стоппере</div><div class="kpi-value">${blocked.length}</div><div class="kpi-note">${money(blocked.reduce((a, d) => a + (d.value || 0), 0))}/мес ждут решения</div></div>
+        <div class="kpi"><div class="kpi-label">Требуют внимания</div><div class="kpi-value ${stuck.length - blocked.length > 0 ? 'neg-text' : ''}">${stuck.length - blocked.length}</div><div class="kpi-note">просрочен шаг или > ${STUCK_DAYS} дней на этапе</div></div>
       </div>
       <div class="board">${columns.map((stage) => {
         const own = all.filter((d) => d.stage === stage);
@@ -90,7 +100,7 @@ const Funnel = (() => {
         const conv = stage !== 'lead' && stage !== 'lost'
           ? `<span class="col-conv" title="Дошли до этапа из всех сделок">дошли ${pct(all.filter((d) => reached(d, stage)).length, all.length)}</span>` : '';
         return `<section class="column ${stage}" data-stage="${stage}">
-          <header class="column-head"><div><b>${STAGES[stage]}</b><span class="count">${own.length}</span></div>
+          <header class="column-head" title="${esc(STAGE_HINT[stage])}"><div><b>${STAGES[stage]} <span class="hint-mark">?</span></b><span class="count">${own.length}</span></div>
             <div class="column-sum">${money(sum)}/мес ${conv}</div></header>
           <div class="column-body">${own.map(card).join('') || '<div class="column-empty">Перетащите сюда</div>'}</div>
         </section>`;
@@ -128,7 +138,8 @@ const Funnel = (() => {
     const problem = dealProblem(d);
     const checklist = stageChecklist(d);
     const done = checklist.filter((r) => r.done).length;
-    const ready = checklist.length && done === checklist.length;
+    const stops = activeBlockers(d);
+    const ready = checklist.length && done === checklist.length && !stops.length;
     const contact = d.contacts[0];
     const n = onStage(d);
     return `<article class="deal-card ${problem ? 'is-' + problem.level : ''}" draggable="true" data-id="${d.id}">
@@ -136,12 +147,13 @@ const Funnel = (() => {
       <div class="deal-title">${esc(d.title)}</div>
       ${contact ? `<div class="deal-meta">${esc(contact.name)}${contact.telegram ? ' · ' + esc(contact.telegram) : ''}</div>` : ''}
       ${d.stage === 'lost' ? `<div class="deal-meta">${esc(d.lostReason || 'Причина не указана')}</div>` : ''}
+      ${OPEN.includes(d.stage) ? stops.map((b) => `<div class="stop">${ICONS.stop}<span><b>${esc(BLOCKERS[b.type])}</b>${b.text ? ' — ' + esc(b.text) : ''} · ${SIDE[b.side]}</span></div>`).join('') : ''}
       ${OPEN.includes(d.stage) && d.nextStep ? `<div class="deal-step ${problem?.label === 'Просрочено' ? 'neg-text' : ''}">${esc(d.nextStep)}${d.nextStepOn ? ' · ' + date(d.nextStepOn) : ''}</div>` : ''}
       <div class="deal-foot">
         <span class="${n > STUCK_DAYS && OPEN.includes(d.stage) ? 'warn-text' : 'muted'}">${n ? days(n) + ' на этапе' : 'сегодня'}</span>
         ${OPEN.includes(d.stage) ? (ready
           ? `<button class="btn sm ready" data-next title="Перевести в «${STAGES[next(d.stage)]}»">${STAGES[next(d.stage)]} ${ICONS.arrow}</button>`
-          : `<span class="muted">${done} из ${checklist.length}</span>`) : ''}
+          : stops.length ? '<span class="neg-text">стоп</span>' : `<span class="muted">${done} из ${checklist.length}</span>`) : ''}
       </div></article>`;
   }
 
@@ -160,9 +172,11 @@ const Funnel = (() => {
       UI.toast('Сначала добавьте компанию в базу', true);
       return;
     }
-    const d = { stage: 'lead', requirements: [], history: [], contacts: [], ...deal };
+    const d = { stage: 'lead', requirements: [], history: [], contacts: [], blockers: [], ...deal };
+    let blockers = (d.blockers || []).map((b) => ({ ...b }));
     const company = companies.find((c) => c.id === d.companyId);
-    const problem = d.id ? dealProblem(d) : null;
+    // Стоппер показан своим блоком — в плашке проблемы не повторяем.
+    const problem = d.id && dealProblem(d)?.label !== 'Стоппер' ? dealProblem(d) : null;
     const isOpen = OPEN.includes(d.stage);
     const target = next(d.stage);
     const current = stageChecklist(d);
@@ -175,7 +189,15 @@ const Funnel = (() => {
       title: d.id ? d.title : 'Новый лид',
       sub: d.id ? `${esc(d.companyName)} · ${tag(STAGES[d.stage], d.stage === 'lost' ? 'neg' : d.stage === 'live' ? 'pos' : 'info')}${isOpen ? ` · ${days(onStage(d))} на этапе` : ''}` : '',
       body: `
-        ${d.id ? `<ol class="stepper">${stepper}</ol>` : ''}
+        ${d.id ? `<ol class="stepper">${stepper}</ol><p class="stage-hint">${esc(STAGE_HINT[d.stage])}</p>` : ''}
+        ${d.stage !== 'live' ? `<div class="block"><div class="block-title">Стопперы <span class="sub">пока стоппер не снят, сделка дальше не идёт</span></div>
+          <div data-blockers></div>
+          <div class="stop-add">
+            <select name="blockerType" aria-label="Тип стоппера">${options(BLOCKERS, 'ad_account')}</select>
+            <select name="blockerSide" aria-label="За кем">${options({ us: 'Решение за нами', client: 'Ждём клиента' }, 'us')}</select>
+            <input class="full" name="blockerText" placeholder="Подробнее: в какой сети нужен кабинет, какую модель хотят…" aria-label="Подробнее">
+            <button class="btn" data-add-blocker>${ICONS.stop} Поставить стоппер</button>
+          </div></div>` : ''}
         ${problem ? `<div class="callout ${problem.level}"><b>${esc(problem.text)}</b>${esc(problem.action)}</div>` : ''}
         ${d.stage === 'lost' ? `<div class="callout neg"><b>Отказ</b>${esc(d.lostReason || 'Причина не указана')}</div>` : ''}
         ${isOpen && d.id ? `<div class="block"><div class="block-title">Чтобы перейти в «${STAGES[target]}»
@@ -206,10 +228,42 @@ const Funnel = (() => {
       foot: `${d.id && d.stage !== 'lost' ? '<button class="btn left" data-lose>Отказ</button>' : ''}
         <button class="btn ghost" data-close>Отмена</button>
         <button class="btn ${isOpen && d.id ? '' : 'primary'}" data-save>Сохранить</button>
-        ${isOpen && d.id ? `<button class="btn primary" data-move>В «${STAGES[target]}» ${ICONS.arrow}</button>` : ''}
+        ${isOpen && d.id ? `<button class="btn primary" data-move${activeBlockers(d).length ? ' disabled title="Сначала снимите стоппер"' : ''}>В «${STAGES[target]}» ${ICONS.arrow}</button>` : ''}
         ${d.stage === 'lost' ? '<button class="btn primary" data-revive>Вернуть в воронку</button>' : ''}`,
     }, (el, close) => {
       const reqs = el.querySelector('[data-reqs="current"]');
+      const list = el.querySelector('[data-blockers]');
+      const drawBlockers = () => {
+        if (!list) return;
+        const active = blockers.filter((b) => !b.resolvedAt);
+        const resolved = blockers.filter((b) => b.resolvedAt);
+        list.innerHTML = (active.length ? active.map((b) => `<div class="stop-row">
+            <div>${ICONS.stop}<b>${esc(BLOCKERS[b.type])}</b>${b.text ? `<div class="sub">${esc(b.text)}</div>` : ''}
+              <div class="sub">${SIDE[b.side]} · с ${date(b.createdAt || new Date().toISOString())}</div></div>
+            <button class="btn sm" data-resolve="${esc(b.id)}">Снять</button></div>`).join('')
+          : '<div class="sub">Стопперов нет</div>') +
+          (resolved.length ? `<div class="stop-resolved">${resolved.map((b) => `<div class="sub">✓ ${esc(BLOCKERS[b.type])}${b.text ? ' — ' + esc(b.text) : ''} · снят ${date(b.resolvedAt)}</div>`).join('')}</div>` : '');
+        const mv = el.querySelector('[data-move]');
+        if (mv) mv.disabled = active.length > 0;
+      };
+      drawBlockers();
+      list?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-resolve]');
+        if (!btn) return;
+        blockers = blockers.map((b) => (b.id === btn.dataset.resolve ? { ...b, resolvedAt: new Date().toISOString() } : b));
+        drawBlockers();
+      });
+      el.querySelector('[data-add-blocker]')?.addEventListener('click', () => {
+        blockers.push({
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          type: el.querySelector('[name=blockerType]').value,
+          text: el.querySelector('[name=blockerText]').value.trim(),
+          side: el.querySelector('[name=blockerSide]').value,
+          createdAt: new Date().toISOString(),
+        });
+        el.querySelector('[name=blockerText]').value = '';
+        drawBlockers();
+      });
       el.querySelector('[data-add]')?.addEventListener('click', () =>
         reqs.insertAdjacentHTML('beforeend', checkRow({ text: '', done: false, stage: d.stage })));
       el.addEventListener('click', (e) => e.target.closest('[data-remove]')?.closest('[data-req]').remove());
@@ -219,6 +273,7 @@ const Funnel = (() => {
         title: val('title'), companyId: val('companyId'), stage: val('stage') || d.stage,
         value: num(val('value')), pricingModel: val('pricingModel'), nextStep: val('nextStep'),
         nextStepOn: val('nextStepOn') || null,
+        blockers,
         requirements: [...el.querySelectorAll('[data-req]')]
           .map((row) => ({ text: row.querySelector('[data-k=text]').value.trim(), done: row.querySelector('[data-k=done]').checked, stage: row.dataset.stage }))
           .filter((r) => r.text),

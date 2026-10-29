@@ -41,6 +41,31 @@ const UI = (() => {
     setup: ['Офферы и лендинги получены', 'Постбек настроен и проверен', 'Кампании созданы в сетях'],
     test: ['Тестовый бюджет открутился', 'Конверсии приходят', 'Клиент подтвердил качество'],
   };
+  // Что делаем на этапе — подсказка в канбане и в карточке сделки.
+  const STAGE_HINT = {
+    lead: 'Есть контакт и интерес. Находим ЛПР и понимаем, что за продукт.',
+    qualification: 'Решаем, стоит ли работать: подходят ли вертикаль и гео, проходит ли компания проверку, хватает ли бюджета. Нет — сразу отказ.',
+    negotiation: 'Договариваемся о модели оплаты, ставке и нашей наценке.',
+    contract: 'Подписываем договор и получаем предоплату.',
+    setup: 'Получаем офферы и лендинги, настраиваем постбек, создаём кампании в сетях.',
+    test: 'Тестовый бюджет: проверяем, что конверсии приходят и клиент доволен качеством.',
+    live: 'Клиент работает на постоянной основе.',
+    lost: 'Сделка закрыта отказом.',
+  };
+  // Стоппер — явная причина, по которой сделка не может идти дальше.
+  const BLOCKERS = {
+    ad_account: 'Нужен рекламный кабинет в сети',
+    pricing_model: 'Нужна другая модель оплаты (CPA и т.п.)',
+    vertical: 'Вертикаль или гео не поддерживаем',
+    budget: 'Бюджет ниже минимума',
+    payment: 'Нет предоплаты или способа оплаты',
+    legal: 'Юридическое: договор, KYC, юрлицо',
+    tech: 'Техника: постбек, трекинг, интеграция',
+    creative: 'Нет креативов или лендингов',
+    other: 'Другое',
+  };
+  const SIDE = { us: 'за нами', client: 'за клиентом' };
+  const activeBlockers = (d) => (d.blockers || []).filter((b) => !b.resolvedAt);
   const LOST_REASONS = [
     'Не подошла вертикаль или гео', 'Маленький бюджет', 'Не договорились по цене',
     'Ушёл к конкуренту', 'Пропал, не отвечает', 'Не прошёл проверку', 'Другое',
@@ -88,6 +113,14 @@ const UI = (() => {
 
   function dealProblem(d) {
     if (!OPEN.includes(d.stage)) return null;
+    const stop = activeBlockers(d)[0];
+    if (stop) {
+      return {
+        level: 'neg', label: 'Стоппер',
+        text: `Стоппер: ${BLOCKERS[stop.type]}${stop.text ? ` — ${stop.text}` : ''} (${SIDE[stop.side]})`,
+        action: stop.side === 'us' ? 'Решение за нами: снять стоппер или закрыть сделку' : 'Дожать клиента или закрыть отказом',
+      };
+    }
     if (!d.nextStepOn || d.nextStepOn >= today()) {
       const n = onStage(d);
       return n > STUCK_DAYS ? {
@@ -115,6 +148,7 @@ const UI = (() => {
     deals: I('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
     funnel: I('<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>'),
     back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    stop: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
     arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
     costs: I('<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
     search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
@@ -162,7 +196,8 @@ const UI = (() => {
 
   return {
     esc, money, days, date, ago, today, daysBetween, num, toast, options, drawer, tag,
-    problems, health, dealProblem, ICONS, onStage, stageChecklist,
+    problems, health, dealProblem, ICONS, onStage, stageChecklist, activeBlockers,
+    STAGE_HINT, BLOCKERS, SIDE,
     STATUS, STATUS_TAG, STAGES, OPEN, FLOW, EXIT, LOST_REASONS, STUCK_DAYS, CATEGORIES, PERIODS, KIND,
   };
 })();

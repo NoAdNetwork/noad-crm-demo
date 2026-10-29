@@ -282,3 +282,35 @@ tr.row-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
 .link:hover { text-decoration:underline; }
 .notes { padding:var(--s4) var(--s5); white-space:pre-wrap; }
 .kpi-value.neg-text { color:var(--neg); }
+
+/* Прибыль в центре решений */
+.profit { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); margin-bottom:var(--s3); }
+.profit-item { padding:var(--s4) var(--s5); }
+.profit-item + .profit-item { border-left:1px solid var(--border); }
+.profit-value { font-size:var(--fs-3xl); font-weight:700; letter-spacing:-.02em; margin:6px 0 4px; }
+.profit-note { grid-column:1 / -1; margin:0; padding:var(--s2) var(--s5); border-top:1px solid var(--border);
+  color:var(--text-3); font-size:var(--fs-xs); background:var(--surface-2); border-radius:0 0 var(--r) var(--r); }
+@media (max-width: 860px) {
+  .profit { grid-template-columns:1fr; }
+  .profit-item + .profit-item { border-left:0; border-top:1px solid var(--border); }
+}
+
+/* Стопперы */
+.stop { display:flex; gap:6px; align-items:flex-start; margin-top:6px; padding:6px 8px; border-radius:var(--r-sm);
+  background:var(--neg-bg); border:1px solid var(--neg-line); color:var(--neg); font-size:var(--fs-xs); }
+.stop svg { margin-top:1px; }
+.stop-row { display:flex; justify-content:space-between; gap:var(--s3); align-items:center; padding:var(--s2) var(--s3);
+  margin-bottom:var(--s2); border-radius:var(--r-sm); background:var(--neg-bg); border:1px solid var(--neg-line); }
+.stop-row > div { color:var(--neg); }
+.stop-row svg { vertical-align:-2px; margin-right:6px; }
+.stop-row .sub { color:var(--text-2); }
+.stop-add { display:grid; grid-template-columns:2fr 1fr; gap:var(--s2); margin-top:var(--s2); }
+.stop-add .full { grid-column:1 / -1; }
+.stop-add .btn { justify-self:start; }
+.stop-resolved { margin-top:var(--s2); }
+.stage-hint { margin:-12px 0 var(--s5); color:var(--text-2); font-size:var(--fs-s); }
+.hint-mark { display:inline-grid; place-items:center; width:15px; height:15px; border-radius:50%; background:var(--border);
+  color:var(--text-2); font-size:10px; cursor:help; vertical-align:1px; }
+.btn[disabled] { opacity:.45; cursor:not-allowed; }
+@media (max-width: 860px) { .stop-add { grid-template-columns:1fr; } }
