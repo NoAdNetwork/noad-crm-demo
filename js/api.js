@@ -41,6 +41,7 @@ const Api = (() => {
   return {
     ApiError,
     me: () => request('GET', '/me'),
+    staff: () => request('GET', '/staff'),
     summary: () => request('GET', '/summary'),
     companies: (kind) => request('GET', '/companies?kind=' + encodeURIComponent(kind)),
     company: (id) => request('GET', '/companies/' + id),

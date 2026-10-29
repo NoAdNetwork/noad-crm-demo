@@ -10,12 +10,19 @@ const Demo = (() => {
     (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('demo'));
   if (!enabled) return null;
 
-  const KEY = 'noad-crm-demo-v4';
+  const KEY = 'noad-crm-demo-v5';
   const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
   const FLOW = [...OPEN, 'live'];
   const RUNWAY_DAYS = 7;
   const STALE_MS = 3 * 86400000;
   const role = params.get('role') === 'manager' ? 'manager' : 'admin';
+  // Сотрудники демо: текущий пользователь и два менеджера.
+  const STAFF = [
+    { id: 'demo', email: role === 'admin' ? 'il@noad.network' : 'demo.manager@noad.network', role },
+    { id: 'm-anna', email: 'anna.sokolova@noad.network', role: 'manager' },
+    { id: 'm-ivan', email: 'ivan.petrov@noad.network', role: 'manager' },
+  ];
+  const emailOf = (managerId) => STAFF.find((m) => m.id === managerId)?.email || null;
 
   const now = () => new Date().toISOString();
   const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
@@ -53,6 +60,17 @@ const Demo = (() => {
     const bet = c('advertiser', 'BetZone', 'prospect',
       {}, [{ name: 'Игорь', role: 'Affiliate manager', email: '', telegram: '@igor_bz', phone: '' }]);
     const ed = c('advertiser', 'EduPro', 'prospect');
+    const buyers = c('publisher', 'Arbitrage Lab', 'prospect',
+      {}, [{ name: 'Саша', role: 'Тимлид баеров', email: '', telegram: '@sasha_arb', phone: '' }]);
+    const affs = c('publisher', 'AffBoost', 'prospect',
+      {}, [{ name: 'Kate', role: 'Affiliate manager', email: 'kate@affboost.example', telegram: '', phone: '' }]);
+    const team = { 'm-anna': [acme, beta, vpn, coin, propeller, buyers], 'm-ivan': [game, dating, bet, exo, affs], demo: [shop, adsterra] };
+    for (const [managerId, list] of Object.entries(team)) for (const x of list) x.managerId = managerId;
+    Object.assign(propeller, { publisherType: 'network', paymentTerms: 'prepay' });
+    Object.assign(exo, { publisherType: 'network', paymentTerms: 'prepay' });
+    Object.assign(adsterra, { publisherType: 'network', paymentTerms: 'postpay' });
+    Object.assign(buyers, { publisherType: 'buyer', paymentTerms: 'postpay' });
+    Object.assign(affs, { publisherType: 'affiliate', paymentTerms: 'postpay' });
     const r = (text, stage, done = false) => ({ text, done, stage });
     // Сделка, прошедшая этапы `path` с интервалом `every` дней и стоящая на последнем `stuck` дней.
     const d = (company, title, path, extra = {}, every = 4, stuck = 2) => {
@@ -70,7 +88,7 @@ const Demo = (() => {
       id: id(), category, name, amount, period, active: true, notes: '', updatedAt: now(),
     });
     return {
-      companies: [acme, beta, game, vpn, coin, dating, shop, bet, ed, propeller, exo, adsterra],
+      companies: [acme, beta, game, vpn, coin, dating, shop, bet, ed, propeller, exo, adsterra, buyers, affs],
       deals: [
         d(ed, 'EduPro — курсы, Tier-2', ['lead'], { value: 2000 }, 0, 1),
         d(shop, 'ShopNow — e-com, RU/KZ', ['lead'], { value: 4000, nextStep: 'Найти ЛПР', nextStepOn: day(2) }, 0, 3),
@@ -104,7 +122,17 @@ const Demo = (() => {
         d(beta, 'BetaApps — iOS', upTo('live'), { value: 12000, pricingModel: 'CPA' }, 5, 20),
         d(acme, 'Acme — Tier-1 push', upTo('live'), { value: 9000, pricingModel: 'CPM' }, 6, 40),
         d(shop, 'ShopNow — первый заход', ['lead', 'qualification', 'lost'], { value: 1500, lostReason: 'Маленький бюджет' }, 5, 30),
-        d(adsterra, 'Adsterra — API аккаунт', ['lead', 'qualification'], { nextStep: 'Запросить API-ключ', nextStepOn: day(3) }),
+        d(adsterra, 'Adsterra — API аккаунт', ['lead', 'qualification', 'negotiation'], {
+          nextStep: 'Согласовать постпей 30 дней', nextStepOn: day(3),
+          blockers: [stop('ad_account', 'Нужен отдельный кабинет под push-формат', 'us', 5)],
+        }),
+        d(buyers, 'Arbitrage Lab — команда баеров', ['lead', 'qualification'], {
+          value: 8000, nextStep: 'Проверить трафик на фрод', nextStepOn: day(2),
+          requirements: [r('Форматы и гео нам подходят', 'qualification', true)],
+        }),
+        d(affs, 'AffBoost — аффилиаты Tier-1', ['lead'], { value: 5000, nextStep: 'Созвон по объёмам', nextStepOn: day(1) }),
+        d(exo, 'ExoClick — подключение', upTo('live'), { value: 10000 }, 7, 60),
+        d(propeller, 'PropellerAds — подключение', upTo('live'), { value: 20000 }, 7, 90),
       ],
       costs: [
         cost('payroll', 'Менеджер по работе с клиентами', 2500),
@@ -147,12 +175,20 @@ const Demo = (() => {
       runwayDays: daily && c.balance !== null ? Math.floor(c.balance / daily) : null,
       alerts: alerts(c),
       openDeals: db.deals.filter((d) => d.companyId === c.id && OPEN.includes(d.stage)).length,
+      managerId: c.managerId || null,
+      managerEmail: emailOf(c.managerId),
+      publisherType: c.publisherType || null,
+      paymentTerms: c.paymentTerms || null,
     };
   }
 
   function dealView(d) {
     const c = db.companies.find((x) => x.id === d.companyId);
-    return { ...copy(d), companyName: c.name, companyKind: c.kind, contacts: copy(c.contacts) };
+    return {
+      ...copy(d), companyName: c.name, companyKind: c.kind, contacts: copy(c.contacts),
+      managerId: c.managerId || null, managerEmail: emailOf(c.managerId),
+      publisherType: c.publisherType || null, paymentTerms: c.paymentTerms || null,
+    };
   }
 
   class DemoError extends Error {
@@ -179,6 +215,7 @@ const Demo = (() => {
     role,
     reset() { db = seed(); persist(); },
     async me() { return { id: 'demo', role }; },
+    async staff() { return copy(STAFF); },
     async companies(kind) {
       return db.companies.filter((c) => !kind || c.kind === kind).sort(byName).map(companyView);
     },
@@ -191,6 +228,10 @@ const Demo = (() => {
       required(input.name, 'name');
       const old = db.companies.find((x) => x.id === input.id);
       const { balanceChecked, ...data } = input;
+      if (data.managerId && !STAFF.some((m) => m.id === data.managerId)) {
+        throw new DemoError(422, 'invalid', { managerId: 'not an active staff member' });
+      }
+      if (data.kind !== 'publisher') Object.assign(data, { publisherType: null, paymentTerms: null });
       const checkedAt = data.balance === null ? null
         : !old || balanceChecked || old.balance !== data.balance ? now() : old.balanceCheckedAt;
       return companyView(upsert(db.companies, { ...data, balanceCheckedAt: checkedAt }));

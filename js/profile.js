@@ -5,11 +5,12 @@
 const Profile = (() => {
   const {
     esc, money, days, date, ago, tag, problems, health, dealProblem, onStage,
-    ICONS, STATUS, STATUS_TAG, STAGES, OPEN, KIND,
+    ICONS, STATUS, STATUS_TAG, OPEN, KIND, stageLabels, PUBLISHER_TYPE, PAYMENT, managerName,
   } = UI;
 
   async function page(root, ctx, kind, id) {
     const c = await Api.company(id);
+    const STAGES = stageLabels(kind);
     const list = kind === 'advertiser' ? 'advertisers' : 'publishers';
     const issues = c.status === 'active' ? problems(c) : [];
     const daily = c.monthlySpend ? c.monthlySpend / 30 : null;
@@ -19,10 +20,12 @@ const Profile = (() => {
     const open = c.deals.filter((d) => OPEN.includes(d.stage));
 
     root.innerHTML = `
-      <a class="back" href="#${list}">${ICONS.back} ${kind === 'advertiser' ? 'Все рекламодатели' : 'Все сети'}</a>
+      <a class="back" href="#${list}">${ICONS.back} ${kind === 'advertiser' ? 'Все рекламодатели' : 'Все паблишеры'}</a>
       <div class="page-head"><div>
           <h1>${esc(c.name)}</h1>
-          <p class="profile-tags">${KIND[kind]} · ${tag(STATUS[c.status], STATUS_TAG[c.status])} ${health(c)}
+          <p class="profile-tags">${kind === 'publisher' && c.publisherType ? PUBLISHER_TYPE[c.publisherType] : KIND[kind]} · ${tag(STATUS[c.status], STATUS_TAG[c.status])} ${health(c)}
+            ${kind === 'publisher' && c.paymentTerms ? tag(PAYMENT[c.paymentTerms], c.paymentTerms === 'prepay' ? 'warn' : 'info') : ''}
+            · Менеджер: <b>${esc(managerName(c.managerEmail))}</b>
             ${c.website ? ` · <a class="link" href="${esc(c.website)}" target="_blank" rel="noopener noreferrer">${esc(c.website.replace(/^https?:\/\//, ''))}</a>` : ''}</p></div>
         <div class="tools"><button class="btn" data-edit>Редактировать</button>
           <button class="btn primary" data-deal>${ICONS.plus} Новая сделка</button></div></div>

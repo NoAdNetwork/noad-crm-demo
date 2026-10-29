@@ -74,9 +74,38 @@ const UI = (() => {
   const STUCK_DAYS = 14;
   const onStage = (d) => (d.stageChangedAt ? Math.max(0, Math.floor((Date.now() - new Date(d.stageChangedAt)) / 86400000)) : 0);
   // Чек-лист этапа: пункты, привязанные к этапу, плюс шаблон EXIT для тех, что ещё не добавлены.
+  // Паблишеры идут по тем же этапам, но смысл этапов другой: подключаем источник трафика.
+  const PUB_STAGES = { qualification: 'Квалификация трафика', contract: 'Договор', setup: 'Интеграция', test: 'Тест трафика' };
+  const PUB_HINT = {
+    lead: 'Есть контакт сети, баера или аффилиата. Понимаем, какой у них трафик.',
+    qualification: 'Проверяем трафик: форматы, гео, объёмы, качество, нет ли фрода. Не подходит — сразу отказ.',
+    negotiation: 'Договариваемся о ставках, условиях оплаты (препей или постпей) и минимальном депозите.',
+    contract: 'Подписываем договор или регистрируемся в кабинете сети.',
+    setup: 'Интегрируемся: API или кабинет, постбек, наши кампании в их системе.',
+    test: 'Тестовая закупка: смотрим качество трафика и конверсии у рекламодателей.',
+    live: 'Закупаем трафик на постоянной основе.',
+    lost: 'Подключение закрыто отказом.',
+  };
+  const PUB_EXIT = {
+    lead: ['Понятно, какой трафик у источника', 'Есть контакт менеджера'],
+    qualification: ['Форматы и гео нам подходят', 'Объёмы достаточные', 'Трафик проверен на фрод'],
+    negotiation: ['Согласованы ставки', 'Согласованы условия оплаты (препей / постпей)'],
+    contract: ['Договор подписан или аккаунт открыт', 'Пополнен депозит (если препей)'],
+    setup: ['Доступ к API или кабинету', 'Постбек настроен и проверен'],
+    test: ['Тестовая закупка проведена', 'Качество трафика подтверждено рекламодателями'],
+  };
+  const stageLabels = (kind) => (kind === 'publisher' ? { ...STAGES, ...PUB_STAGES } : STAGES);
+  const stageHints = (kind) => (kind === 'publisher' ? PUB_HINT : STAGE_HINT);
+  const PUBLISHER_TYPE = { network: 'Нетворк', buyer: 'Баер', affiliate: 'Аффилиат' };
+  const PAYMENT = { prepay: 'Препей', postpay: 'Постпей' };
+  // Имя менеджера из рабочего email: anna.petrova@… → Anna Petrova.
+  const managerName = (email) => (email ? email.split('@')[0].split(/[._-]/).filter(Boolean)
+    .map((p) => p[0].toUpperCase() + p.slice(1)).join(' ') : 'Не назначен');
+  const initials = (email) => (email ? managerName(email).split(' ').map((p) => p[0]).join('').slice(0, 2) : '—');
+
   function stageChecklist(d, stage = d.stage) {
     const own = d.requirements.filter((r) => r.stage === stage);
-    const missing = (EXIT[stage] || []).filter((t) => !own.some((r) => r.text === t)).map((text) => ({ text, done: false, stage }));
+    const missing = ((d.companyKind === 'publisher' ? PUB_EXIT : EXIT)[stage] || []).filter((t) => !own.some((r) => r.text === t)).map((text) => ({ text, done: false, stage }));
     return [...own, ...missing];
   }
   const CATEGORIES = { payroll: 'ФОТ', subscription: 'Подписки', infrastructure: 'Инфраструктура', other: 'Прочее' };
@@ -158,6 +187,8 @@ const UI = (() => {
     mark: '<svg width="18" height="18" viewBox="0 0 32 32"><circle cx="16" cy="16" r="9" fill="none" stroke="#B6E84A" stroke-width="3"/><line x1="9.6" y1="22.4" x2="22.4" y2="9.6" stroke="#B6E84A" stroke-width="3" stroke-linecap="round"/></svg>',
   };
 
+  ICONS['publisher-funnel'] = ICONS.funnel;
+
   function toast(text, error = false) {
     const el = document.createElement('div');
     el.className = 'toast' + (error ? ' err' : '');
@@ -197,7 +228,7 @@ const UI = (() => {
   return {
     esc, money, days, date, ago, today, daysBetween, num, toast, options, drawer, tag,
     problems, health, dealProblem, ICONS, onStage, stageChecklist, activeBlockers,
-    STAGE_HINT, BLOCKERS, SIDE,
+    STAGE_HINT, BLOCKERS, SIDE, stageLabels, stageHints, PUBLISHER_TYPE, PAYMENT, managerName, initials,
     STATUS, STATUS_TAG, STAGES, OPEN, FLOW, EXIT, LOST_REASONS, STUCK_DAYS, CATEGORIES, PERIODS, KIND,
   };
 })();

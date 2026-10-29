@@ -1,12 +1,14 @@
-// Воронка рекламодателей: канбан по этапам флоу, перетаскивание карточек между колонками
+// Воронки рекламодателей и паблишеров: канбан по этапам флоу, перетаскивание карточек между колонками
 // и карточка сделки с условиями выхода с этапа, переходом дальше и отказом с причиной.
 'use strict';
 
 const Funnel = (() => {
   const {
     esc, money, days, date, num, options, drawer, tag, dealProblem, onStage, stageChecklist, activeBlockers,
-    ICONS, STAGES, OPEN, FLOW, LOST_REASONS, STUCK_DAYS, KIND, STAGE_HINT, BLOCKERS, SIDE,
+    ICONS, OPEN, FLOW, LOST_REASONS, STUCK_DAYS, KIND, BLOCKERS, SIDE,
+    stageLabels, stageHints, PUBLISHER_TYPE, PAYMENT, managerName, initials,
   } = UI;
+  const labelsOf = (d) => stageLabels(d.companyKind);
 
   const next = (stage) => FLOW[FLOW.indexOf(stage) + 1];
   const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—');
@@ -19,7 +21,7 @@ const Funnel = (() => {
       if (!requirements.some((r) => r.stage === stage && r.text === item.text)) requirements.push(item);
     }
     await Api.saveDeal({ ...deal, stage, lostReason, requirements });
-    UI.toast(stage === 'lost' ? 'Сделка закрыта отказом' : `Переведено: ${STAGES[stage]}`);
+    UI.toast(stage === 'lost' ? 'Сделка закрыта отказом' : `Переведено: ${labelsOf(deal)[stage]}`);
     ctx.refresh();
   }
 
@@ -35,7 +37,7 @@ const Funnel = (() => {
     }
     const open = stageChecklist(deal).filter((r) => !r.done);
     if (forward && deal.stage !== 'lost' && open.length &&
-        !confirm(`На этапе «${STAGES[deal.stage]}» не выполнено:\n— ${open.map((r) => r.text).join('\n— ')}\n\nВсё равно перевести в «${STAGES[stage]}»?`)) {
+        !confirm(`На этапе «${labelsOf(deal)[deal.stage]}» не выполнено:\n— ${open.map((r) => r.text).join('\n— ')}\n\nВсё равно перевести в «${labelsOf(deal)[stage]}»?`)) {
       return ctx.refresh();
     }
     move(ctx, deal, stage).catch((e) => {
@@ -66,8 +68,28 @@ const Funnel = (() => {
 
   /* ── Канбан ─────────────────────────────────────────── */
 
-  async function board(root, ctx) {
-    const all = (await Api.deals()).filter((d) => d.companyKind === 'advertiser');
+  // Фильтры воронки: менеджер (все / мои / конкретный), у паблишеров ещё тип и оплата.
+  function filters(ctx, kind, deals) {
+    const st = ctx.state;
+    const managers = [...new Map(deals.filter((d) => d.managerId).map((d) => [d.managerId, d.managerEmail])).entries()];
+    const select = (name, map, value) => `<select data-filter="${name}" aria-label="${name}">${Object.entries(map)
+      .map(([k, v]) => `<option value="${k}"${k === (value || '') ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+    return `<div class="filters">
+      ${select('manager', { '': 'Все менеджеры', mine: 'Мои', none: 'Без менеджера', ...Object.fromEntries(managers.map(([id, email]) => [id, managerName(email)])) }, st.manager)}
+      ${kind === 'publisher' ? select('ptype', { '': 'Все типы', ...PUBLISHER_TYPE }, st.ptype) + select('terms', { '': 'Препей и постпей', ...PAYMENT }, st.terms) : ''}
+    </div>`;
+  }
+  const passes = (ctx, d) => {
+    const st = ctx.state;
+    const byManager = !st.manager || (st.manager === 'mine' ? d.managerId === ctx.me.id : st.manager === 'none' ? !d.managerId : d.managerId === st.manager);
+    return byManager && (!st.ptype || d.publisherType === st.ptype) && (!st.terms || d.paymentTerms === st.terms);
+  };
+
+  async function board(root, ctx, kind = 'advertiser') {
+    const S = stageLabels(kind);
+    const HINT = stageHints(kind);
+    const deals = (await Api.deals()).filter((d) => d.companyKind === kind);
+    const all = deals.filter((d) => passes(ctx, d));
     const showLost = ctx.state.lost;
     const columns = [...FLOW, ...(showLost ? ['lost'] : [])];
     const open = all.filter((d) => OPEN.includes(d.stage));
@@ -83,14 +105,14 @@ const Funnel = (() => {
     const closed = all.filter((d) => d.stage === 'live' || d.stage === 'lost');
 
     root.innerHTML = `
-      <div class="page-head"><div><h1>Воронка рекламодателей</h1>
-        <p>Перетаскивайте карточки между этапами. Для каждого этапа заданы условия, без которых дальше не идём.</p></div>
-        <div class="tools"><button class="btn" data-lost>${showLost ? 'Скрыть отказы' : 'Показать отказы'}</button>
+      <div class="page-head"><div><h1>${kind === 'publisher' ? 'Воронка паблишеров' : 'Воронка рекламодателей'}</h1>
+        <p>${kind === 'publisher' ? 'Подключение сетей, баеров и аффилиатов.' : 'Путь клиента от лида до запуска.'} Перетаскивайте карточки между этапами; у каждого этапа есть условия, без которых дальше не идём.</p></div>
+        <div class="tools">${filters(ctx, kind, deals)}<button class="btn" data-lost>${showLost ? 'Скрыть отказы' : 'Показать отказы'}</button>
           <button class="btn primary" data-new>${ICONS.plus} Новый лид</button></div></div>
       <div class="kpis">
         <div class="kpi"><div class="kpi-label">В воронке</div><div class="kpi-value">${open.length}</div><div class="kpi-note">потенциал ${money(open.reduce((a, d) => a + (d.value || 0), 0))}/мес</div></div>
-        <div class="kpi"><div class="kpi-label">Конверсия в «Работает»</div><div class="kpi-value">${pct(live.length, closed.length)}</div><div class="kpi-note">${live.length} запущено из ${closed.length} закрытых</div></div>
-        <div class="kpi"><div class="kpi-label">Срок от лида до запуска</div><div class="kpi-value">${avgCycle === null ? '—' : days(avgCycle)}</div><div class="kpi-note">в среднем по запущенным</div></div>
+        <div class="kpi"><div class="kpi-label">Конверсия в «Работает»</div><div class="kpi-value">${pct(live.length, closed.length)}</div><div class="kpi-note">${live.length} ${kind === 'publisher' ? 'подключено' : 'запущено'} из ${closed.length} закрытых</div></div>
+        <div class="kpi"><div class="kpi-label">${kind === 'publisher' ? 'Срок подключения' : 'Срок от лида до запуска'}</div><div class="kpi-value">${avgCycle === null ? '—' : days(avgCycle)}</div><div class="kpi-note">в среднем по запущенным</div></div>
         <div class="kpi ${blocked.length ? 'neg' : ''}"><div class="kpi-label">Стоят на стоппере</div><div class="kpi-value">${blocked.length}</div><div class="kpi-note">${money(blocked.reduce((a, d) => a + (d.value || 0), 0))}/мес ждут решения</div></div>
         <div class="kpi"><div class="kpi-label">Требуют внимания</div><div class="kpi-value ${stuck.length - blocked.length > 0 ? 'neg-text' : ''}">${stuck.length - blocked.length}</div><div class="kpi-note">просрочен шаг или > ${STUCK_DAYS} дней на этапе</div></div>
       </div>
@@ -100,13 +122,17 @@ const Funnel = (() => {
         const conv = stage !== 'lead' && stage !== 'lost'
           ? `<span class="col-conv" title="Дошли до этапа из всех сделок">дошли ${pct(all.filter((d) => reached(d, stage)).length, all.length)}</span>` : '';
         return `<section class="column ${stage}" data-stage="${stage}">
-          <header class="column-head" title="${esc(STAGE_HINT[stage])}"><div><b>${STAGES[stage]} <span class="hint-mark">?</span></b><span class="count">${own.length}</span></div>
+          <header class="column-head" title="${esc(HINT[stage])}"><div><b>${S[stage]} <span class="hint-mark">?</span></b><span class="count">${own.length}</span></div>
             <div class="column-sum">${money(sum)}/мес ${conv}</div></header>
           <div class="column-body">${own.map(card).join('') || '<div class="column-empty">Перетащите сюда</div>'}</div>
         </section>`;
       }).join('')}</div>`;
 
-    root.querySelector('[data-new]').addEventListener('click', () => dealForm(ctx, { stage: 'lead' }, 'advertiser'));
+    root.querySelector('[data-new]').addEventListener('click', () => dealForm(ctx, { stage: 'lead' }, kind));
+    root.querySelectorAll('[data-filter]').forEach((el) => el.addEventListener('change', () => {
+      ctx.state[el.dataset.filter] = el.value;
+      ctx.refresh();
+    }));
     root.querySelector('[data-lost]').addEventListener('click', () => { ctx.state.lost = !showLost; ctx.refresh(); });
     root.querySelectorAll('.deal-card').forEach((el) => {
       const deal = all.find((d) => d.id === el.dataset.id);
@@ -142,17 +168,20 @@ const Funnel = (() => {
     const ready = checklist.length && done === checklist.length && !stops.length;
     const contact = d.contacts[0];
     const n = onStage(d);
+    const L = labelsOf(d);
     return `<article class="deal-card ${problem ? 'is-' + problem.level : ''}" draggable="true" data-id="${d.id}">
       <div class="deal-top"><b>${esc(d.companyName)}</b><span class="deal-value">${money(d.value)}</span></div>
       <div class="deal-title">${esc(d.title)}</div>
+      ${d.companyKind === 'publisher' && (d.publisherType || d.paymentTerms) ? `<div class="deal-tags">${d.publisherType ? tag(PUBLISHER_TYPE[d.publisherType], 'plain') : ''}${d.paymentTerms ? tag(PAYMENT[d.paymentTerms], d.paymentTerms === 'prepay' ? 'warn plain' : 'info plain') : ''}</div>` : ''}
       ${contact ? `<div class="deal-meta">${esc(contact.name)}${contact.telegram ? ' · ' + esc(contact.telegram) : ''}</div>` : ''}
       ${d.stage === 'lost' ? `<div class="deal-meta">${esc(d.lostReason || 'Причина не указана')}</div>` : ''}
       ${OPEN.includes(d.stage) ? stops.map((b) => `<div class="stop">${ICONS.stop}<span><b>${esc(BLOCKERS[b.type])}</b>${b.text ? ' — ' + esc(b.text) : ''} · ${SIDE[b.side]}</span></div>`).join('') : ''}
       ${OPEN.includes(d.stage) && d.nextStep ? `<div class="deal-step ${problem?.label === 'Просрочено' ? 'neg-text' : ''}">${esc(d.nextStep)}${d.nextStepOn ? ' · ' + date(d.nextStepOn) : ''}</div>` : ''}
       <div class="deal-foot">
-        <span class="${n > STUCK_DAYS && OPEN.includes(d.stage) ? 'warn-text' : 'muted'}">${n ? days(n) + ' на этапе' : 'сегодня'}</span>
+        <span class="who-chip" title="${esc(managerName(d.managerEmail))}">${esc(initials(d.managerEmail))}</span>
+        <span class="${n > STUCK_DAYS && OPEN.includes(d.stage) ? 'warn-text' : 'muted'}">${n ? days(n) : 'сегодня'}</span>
         ${OPEN.includes(d.stage) ? (ready
-          ? `<button class="btn sm ready" data-next title="Перевести в «${STAGES[next(d.stage)]}»">${STAGES[next(d.stage)]} ${ICONS.arrow}</button>`
+          ? `<button class="btn sm ready" data-next title="Перевести в «${L[next(d.stage)]}»">${L[next(d.stage)]} ${ICONS.arrow}</button>`
           : stops.length ? '<span class="neg-text">стоп</span>' : `<span class="muted">${done} из ${checklist.length}</span>`) : ''}
       </div></article>`;
   }
@@ -173,6 +202,9 @@ const Funnel = (() => {
       return;
     }
     const d = { stage: 'lead', requirements: [], history: [], contacts: [], blockers: [], ...deal };
+    d.companyKind ||= kind || companies.find((c) => c.id === d.companyId)?.kind || 'advertiser';
+    const STAGES = stageLabels(d.companyKind);
+    const STAGE_HINT = stageHints(d.companyKind);
     let blockers = (d.blockers || []).map((b) => ({ ...b }));
     const company = companies.find((c) => c.id === d.companyId);
     // Стоппер показан своим блоком — в плашке проблемы не повторяем.
@@ -271,6 +303,7 @@ const Funnel = (() => {
       const collect = () => ({
         ...d,
         title: val('title'), companyId: val('companyId'), stage: val('stage') || d.stage,
+        companyKind: companies.find((c) => c.id === val('companyId'))?.kind || d.companyKind,
         value: num(val('value')), pricingModel: val('pricingModel'), nextStep: val('nextStep'),
         nextStepOn: val('nextStepOn') || null,
         blockers,

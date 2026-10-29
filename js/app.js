@@ -5,8 +5,8 @@
   const app = document.getElementById('app');
   const MENU = [
     ['Обзор', [['decisions', 'Центр решений']]],
-    ['Продажи', [['funnel', 'Воронка'], ['deals', 'Все сделки']]],
-    ['База', [['advertisers', 'Рекламодатели'], ['publishers', 'Сети и паблишеры']]],
+    ['Воронки', [['funnel', 'Рекламодатели'], ['publisher-funnel', 'Паблишеры'], ['deals', 'Все сделки']]],
+    ['База', [['advertisers', 'Рекламодатели'], ['publishers', 'Паблишеры']]],
     ['Финансы', [['costs', 'Расходы', 'admin']]],
   ];
   // Старые ссылки первой версии.
@@ -39,6 +39,11 @@
     if (state.key !== key) {
       Object.keys(state).forEach((k) => delete state[k]);
       state.key = key;
+      // Переход «к клиентам менеджера» из центра решений приносит фильтр с собой.
+      try {
+        const handoff = sessionStorage.getItem('crm-manager');
+        if (handoff) { state.manager = handoff; sessionStorage.removeItem('crm-manager'); }
+      } catch (_) { /* хранилище недоступно — без фильтра */ }
     }
     app.innerHTML = `
       <aside class="side">
@@ -65,7 +70,8 @@
     const screen = document.getElementById('screen');
     try {
       if (id) await Profile.page(screen, ctx, route === 'advertisers' ? 'advertiser' : 'publisher', id);
-      else if (route === 'funnel') await Funnel.board(screen, ctx);
+      else if (route === 'funnel') await Funnel.board(screen, ctx, 'advertiser');
+      else if (route === 'publisher-funnel') await Funnel.board(screen, ctx, 'publisher');
       else await Screens[route](screen, ctx);
     } catch (error) {
       if (error.status === 401) return login();
@@ -76,6 +82,7 @@
 
   const ctx = {
     get me() { return me; },
+    staff: [],
     state,
     refresh: render,
     // Компания открывается страницей в базе, сделка — карточкой поверх текущего экрана.
@@ -99,13 +106,20 @@
       set('decisions', s.atRisk.length + late, true);
       set('advertisers', issues('advertiser'), true);
       set('publishers', issues('publisher'), true);
-      set('funnel', late || s.pipeline.open, late > 0);
+      const lateOf = (kind) => deals.filter((d) => d.companyKind === kind && UI.dealProblem(d)).length;
+      const openOf = (kind) => deals.filter((d) => d.companyKind === kind && UI.OPEN.includes(d.stage)).length;
+      set('funnel', lateOf('advertiser') || openOf('advertiser'), lateOf('advertiser') > 0);
+      set('publisher-funnel', lateOf('publisher') || openOf('publisher'), lateOf('publisher') > 0);
     } catch (_) { /* счётчики необязательны */ }
   }
 
   window.addEventListener('hashchange', () => me && render());
 
   Api.me()
-    .then((principal) => { me = principal; render(); })
+    .then(async (principal) => {
+      me = principal;
+      ctx.staff = await Api.staff().catch(() => []);
+      render();
+    })
     .catch(login);
 })();
