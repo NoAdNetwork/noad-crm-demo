@@ -1,39 +1,57 @@
-// Каркас админки: вход персонала, меню, маршрут по #hash.
+// Каркас админки: вход персонала, меню слева по разделам, маршрут по #hash.
 'use strict';
 
 (() => {
   const app = document.getElementById('app');
-  const NAV = [
-    ['summary', 'Сводка'],
-    ['advertisers', 'Рекламодатели'],
-    ['publishers', 'Паблишеры'],
-    ['funnel', 'Воронка'],
-    ['costs', 'Расходы', 'admin'],
+  const MENU = [
+    ['Обзор', [['decisions', 'Центр решений']]],
+    ['Клиенты', [['advertisers', 'Рекламодатели'], ['publishers', 'Сети и паблишеры']]],
+    ['Продажи', [['deals', 'Сделки']]],
+    ['Финансы', [['costs', 'Расходы', 'admin']]],
   ];
+  // Старые ссылки первой версии.
+  const ALIASES = { summary: 'decisions', funnel: 'deals' };
   let me = null;
   const state = {};
 
   function login() {
-    app.innerHTML = `<div class="login">
-      <img src="favicon.svg" alt="" width="48" height="48">
+    app.innerHTML = `<div class="login"><div class="login-box">
+      <div class="brand-mark">${UI.ICONS.mark}</div>
       <h1>CRM noad.network</h1>
-      <p class="muted">Вход для персонала через Google Workspace.</p>
-      <a class="btn primary" href="/auth/staff/login">Войти</a></div>`;
+      <p class="sub">Вход для сотрудников через Google Workspace</p>
+      <a class="btn primary" href="/auth/staff/login">Войти через Google</a></div></div>`;
+  }
+
+  const allowed = () => MENU.map(([title, items]) => [title, items.filter(([, , role]) => !role || me.role === role)])
+    .filter(([, items]) => items.length);
+
+  function current() {
+    const hash = location.hash.slice(1);
+    const route = ALIASES[hash] || hash;
+    return allowed().some(([, items]) => items.some(([k]) => k === route)) ? route : 'decisions';
   }
 
   async function render() {
-    const allowed = NAV.filter(([, , role]) => !role || me.role === role);
-    const route = allowed.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : 'summary';
+    const route = current();
     if (state.route !== route) {
       Object.keys(state).forEach((k) => delete state[k]);
       state.route = route;
     }
     app.innerHTML = `
       <aside class="side">
-        <div class="brand"><img src="favicon.svg" alt="">noad <span>CRM</span></div>
-        ${allowed.map(([k, label]) => `<a class="nav${k === route ? ' on' : ''}" href="#${k}">${label}<span data-badge="${k}"></span></a>`).join('')}
-        <div class="who">${Api.demo ? '<span class="chip amber">Демо: данные в браузере</span><br>' : ''}${me.role === 'admin' ? 'Администратор' : 'Менеджер'}<br>
-          <button class="btn sm ghost" data-logout>${Api.demo ? 'Сбросить демо' : 'Выйти'}</button></div>
+        <div class="brand"><div class="brand-mark">${UI.ICONS.mark}</div>
+          <div class="brand-name">noad.network<small>CRM правления</small></div></div>
+        ${allowed().map(([title, items]) => `<nav class="nav-group" aria-label="${title}">
+          <div class="nav-title">${title}</div>
+          ${items.map(([k, label]) => `<a class="nav${k === route ? ' on' : ''}" href="#${k}" title="${label}">
+            ${UI.ICONS[k]}<span class="label">${label}</span><span data-count="${k}"></span></a>`).join('')}
+        </nav>`).join('')}
+        <div class="side-foot">
+          ${Api.demo ? '<div class="demo-flag"><span class="tag warn">Демо: данные в браузере</span></div>' : ''}
+          <div class="who"><div class="avatar">${me.role === 'admin' ? 'A' : 'M'}</div>
+            <div><b>${me.role === 'admin' ? 'Администратор' : 'Менеджер'}</b>
+              <button class="btn ghost sm" data-logout>${Api.demo ? 'Сбросить демо' : 'Выйти'}</button></div></div>
+        </div>
       </aside>
       <main class="main" id="screen"><div class="muted">Загрузка…</div></main>`;
     app.querySelector('[data-logout]').addEventListener('click', async () => {
@@ -42,35 +60,40 @@
       location.reload();
     });
     const screen = document.getElementById('screen');
-    const ctx = { me, state, refresh: render };
     try {
       await Screens[route](screen, ctx);
     } catch (error) {
       if (error.status === 401) return login();
-      screen.innerHTML = `<div class="note red">Не удалось загрузить: ${UI.esc(error.message)}</div>`;
+      screen.innerHTML = `<div class="callout neg"><b>Не удалось загрузить данные</b>${UI.esc(error.message)}</div>`;
     }
-    applySizes(screen);
-    badges();
+    counts();
   }
 
-  // Ширины полос задаются через CSSOM, а не атрибутом style: CSP админки без 'unsafe-inline'.
-  function applySizes(root) {
-    root.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
-    root.querySelectorAll('[data-columns]').forEach((el) => {
-      el.style.gridTemplateColumns = `repeat(${el.dataset.columns}, minmax(220px, 1fr))`;
-    });
-  }
+  const ctx = {
+    get me() { return me; },
+    state,
+    refresh: render,
+    open(kind, id) {
+      if (kind === 'company') Screens.companyForm(ctx, null, id);
+      else if (kind === 'deal') Screens.openDeal(ctx, id);
+    },
+  };
 
-  // Красная метка в меню — сколько рабочих компаний требуют проверки.
-  async function badges() {
+  // Счётчики в меню: красный — сколько требуют решения, серый — сколько открытых сделок.
+  async function counts() {
     try {
-      const s = await Api.summary();
-      for (const kind of ['advertiser', 'publisher']) {
-        const n = s.atRisk.filter((c) => c.kind === kind).length;
-        const el = app.querySelector(`[data-badge="${kind}s"]`);
-        if (el) el.outerHTML = n ? `<span class="badge">${n}</span>` : '';
-      }
-    } catch (_) { /* метки необязательны */ }
+      const [s, deals] = await Promise.all([Api.summary(), Api.deals()]);
+      const late = deals.filter((d) => UI.dealProblem(d)).length;
+      const issues = (k) => s.atRisk.filter((c) => c.kind === k).length;
+      const set = (route, n, neg) => {
+        const el = app.querySelector(`[data-count="${route}"]`);
+        if (el) el.outerHTML = n ? `<span class="count${neg ? ' neg' : ''}">${n}</span>` : '';
+      };
+      set('decisions', s.atRisk.length + late, true);
+      set('advertisers', issues('advertiser'), true);
+      set('publishers', issues('publisher'), true);
+      set('deals', late || s.pipeline.open, late > 0);
+    } catch (_) { /* счётчики необязательны */ }
   }
 
   window.addEventListener('hashchange', () => me && render());
