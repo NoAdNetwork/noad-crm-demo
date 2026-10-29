@@ -250,7 +250,7 @@ const Screens = (() => {
       };
       el.querySelector('[data-save]').addEventListener('click', () => submit(false));
       el.querySelector('[data-checked]')?.addEventListener('click', () => submit(true));
-      el.querySelector('[data-new-deal]')?.addEventListener('click', () => { close(); dealForm(ctx, { companyId: id }); });
+      el.querySelector('[data-new-deal]')?.addEventListener('click', () => { close(); Funnel.dealForm(ctx, { companyId: id, stage: 'lead' }); });
       el.querySelectorAll('[data-deal]').forEach((d) => d.addEventListener('click', () => { close(); ctx.open('deal', d.dataset.deal); }));
     });
   }
@@ -262,35 +262,35 @@ const Screens = (() => {
     const tab = ctx.state.tab || 'open';
     const FILTERS = {
       open: (d) => OPEN.includes(d.stage),
-      launched: (d) => d.stage === 'launched',
+      live: (d) => d.stage === 'live',
       lost: (d) => d.stage === 'lost',
       all: () => true,
     };
     const open = list.filter(FILTERS.open);
     const overdue = open.filter((d) => dealProblem(d));
-    const launched = list.filter(FILTERS.launched);
+    const launched = list.filter(FILTERS.live);
     root.innerHTML = `
-      ${head('Сделки', 'Воронка продаж: на каком этапе каждая сделка, следующий шаг и что осталось до запуска',
+      ${head('Все сделки', 'Список сделок с рекламодателями и сетями: этап, следующий шаг и готовность этапа',
         `<button class="btn primary" data-new>${ICONS.plus} Новая сделка</button>`)}
       <div class="kpis">
         ${kpi('Открытых сделок', `${open.length}`, 'в работе у менеджеров')}
         ${kpi('Потенциал открытых', perMonth(open.reduce((a, d) => a + (d.value || 0), 0)), 'если все дойдут до запуска')}
         ${kpi('Просрочено', `${overdue.length}`, overdue.length ? 'следующий шаг не сделан в срок' : 'все шаги в срок', overdue.length ? 'neg' : '')}
-        ${kpi('Запущено', `${launched.length}`, `${money(launched.reduce((a, d) => a + (d.value || 0), 0))} в месяц`)}
+        ${kpi('Работают', `${launched.length}`, `${money(launched.reduce((a, d) => a + (d.value || 0), 0))} в месяц`)}
       </div>
       <div class="card">
         ${tabs([
           ['open', 'Открытые', open.length, overdue.length ? 'neg' : ''],
-          ['launched', 'Запущенные', launched.length],
+          ['live', 'Работают', launched.length],
           ['lost', 'Отказы', list.filter(FILTERS.lost).length],
           ['all', 'Все', list.length],
         ], tab)}
         <div class="card-head">${search(ctx.state.q, 'Поиск по сделке, компании, контакту')}<span class="sub">Сгруппировано по этапам</span></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Сделка</th><th>Контакт</th><th class="r">Потенциал в месяц</th><th>Следующий шаг</th><th>Срок</th><th>Готовность к запуску</th></tr></thead>
+          <thead><tr><th>Сделка</th><th>Контакт</th><th class="r">Потенциал в месяц</th><th>Следующий шаг</th><th>Срок</th><th>Условия этапа</th></tr></thead>
           <tbody data-list></tbody></table></div>
       </div>`;
-    root.querySelector('[data-new]').addEventListener('click', () => dealForm(ctx, {}));
+    root.querySelector('[data-new]').addEventListener('click', () => Funnel.dealForm(ctx, { stage: 'lead' }));
     bindList(root, ctx, () => {
       const shown = list.filter(FILTERS[tab]).filter((d) =>
         match(ctx.state.q, d.title, d.companyName, ...d.contacts.map((p) => p.name)));
@@ -302,86 +302,18 @@ const Screens = (() => {
         return `<tr class="group"><td colspan="6">${STAGES[stage]} · ${own.length} · ${money(sum)}/мес</td></tr>` +
           own.map((d) => {
             const late = dealProblem(d);
-            const done = d.requirements.filter((r) => r.done).length;
+            const checklist = UI.stageChecklist(d);
+            const done = checklist.filter((r) => r.done).length;
             const contact = d.contacts[0];
-            return `<tr class="click ${late ? 'row-neg' : ''}" data-open="deal" data-id="${d.id}">
+            return `<tr class="click ${late ? 'row-' + late.level : ''}" data-open="deal" data-id="${d.id}">
               <td class="name"><b>${esc(d.title)}</b><span>${esc(d.companyName)} · ${d.companyKind === 'advertiser' ? 'рекламодатель' : 'сеть'}</span></td>
               <td class="name">${contact ? `<b>${esc(contact.name)}</b><span>${esc(contact.telegram || contact.email)}</span>` : '<span>—</span>'}</td>
               <td class="r nowrap">${money(d.value)}</td>
               <td>${esc(d.nextStep) || '<span class="muted">не назначен</span>'}</td>
-              <td class="nowrap">${late ? `<span class="neg-text">просрочено на ${days(daysBetween(d.nextStepOn, today()))}</span>` : date(d.nextStepOn)}</td>
-              <td class="nowrap">${d.requirements.length ? (done === d.requirements.length ? tag('Всё готово', 'pos') : `${done} из ${d.requirements.length} пунктов`) : '<span class="muted">—</span>'}</td></tr>`;
+              <td class="nowrap">${late && late.level === 'neg' ? `<span class="neg-text">просрочено на ${days(daysBetween(d.nextStepOn, today()))}</span>` : late ? `<span class="warn-text">${late.label}</span>` : date(d.nextStepOn)}</td>
+              <td class="nowrap">${OPEN.includes(d.stage) && checklist.length ? (done === checklist.length ? tag('Можно дальше', 'pos') : `${done} из ${checklist.length}`) : '<span class="muted">—</span>'}</td></tr>`;
           }).join('');
       }).join('');
-    });
-  }
-
-  function checkRow(r = {}) {
-    return `<div class="check" data-req><input type="checkbox" data-k="done"${r.done ? ' checked' : ''} aria-label="Выполнено">
-      <input data-k="text" placeholder="Что нужно для запуска" value="${esc(r.text)}" aria-label="Пункт">
-      <button class="icon-btn" data-remove title="Удалить пункт" aria-label="Удалить пункт">${ICONS.close}</button></div>`;
-  }
-
-  // Типовой чек-лист запуска: подставляется в новую сделку, менеджер правит под клиента.
-  const LAUNCH_CHECKLIST = [
-    'Проверка компании и вертикали', 'Договор подписан', 'Предоплата / баланс пополнен',
-    'Офферы и лендинги согласованы', 'Постбек настроен и проверен', 'Таргетинг и ставки согласованы',
-  ];
-
-  async function dealForm(ctx, deal) {
-    const companies = [...(await Api.companies('advertiser')), ...(await Api.companies('publisher'))]
-      .filter((c) => c.status !== 'archived' || c.id === deal.companyId);
-    if (!companies.length) {
-      UI.toast('Сначала добавьте рекламодателя или сеть', true);
-      return;
-    }
-    const d = { stage: 'new', requirements: deal.id ? [] : LAUNCH_CHECKLIST.map((text) => ({ text, done: false })), ...deal };
-    const company = companies.find((c) => c.id === d.companyId);
-    const late = d.id ? dealProblem(d) : null;
-    drawer({
-      title: d.id ? d.title : 'Новая сделка',
-      sub: d.id ? `${esc(d.companyName)} · ${STAGES[d.stage]}` : '',
-      body: `
-        ${late ? `<div class="callout neg"><b>${esc(late.text)}</b>${esc(late.action)}</div>` : ''}
-        <div class="block"><div class="block-title">Сделка</div><div class="form">
-          <div class="field full"><label for="d-title">Название</label><input id="d-title" name="title" value="${esc(d.title)}" placeholder="Например, VPN — push CPA"></div>
-          <div class="field full"><label for="d-company">Компания</label><select id="d-company" name="companyId">${companies
-            .map((c) => `<option value="${c.id}"${c.id === d.companyId ? ' selected' : ''}>${esc(c.name)} — ${KIND[c.kind].toLowerCase()}</option>`).join('')}</select></div>
-          <div class="field"><label for="d-stage">Этап</label><select id="d-stage" name="stage">${options(STAGES, d.stage)}</select></div>
-          <div class="field"><label for="d-value">Потенциал в месяц, USD</label><input id="d-value" name="value" type="number" min="0" step="0.01" value="${d.value ?? ''}"></div>
-          <div class="field"><label for="d-model">Модель оплаты</label><input id="d-model" name="pricingModel" value="${esc(d.pricingModel)}" placeholder="CPA, CPM"></div>
-        </div></div>
-        <div class="block"><div class="block-title">Следующий шаг</div><div class="form">
-          <div class="field"><label for="d-step">Что сделать</label><input id="d-step" name="nextStep" value="${esc(d.nextStep)}" placeholder="Созвониться, отправить договор…"></div>
-          <div class="field"><label for="d-on">Срок</label><input id="d-on" name="nextStepOn" type="date" value="${d.nextStepOn || ''}"></div>
-        </div></div>
-        ${company && company.contacts.length ? `<div class="block"><div class="block-title">Контакты компании</div>
-          ${company.contacts.map((c) => `<div class="list-row"><b>${esc(c.name)} <span class="sub">${esc(c.role)}</span></b><span class="sub">${esc([c.telegram, c.email, c.phone].filter(Boolean).join(' · '))}</span></div>`).join('')}</div>` : ''}
-        <div class="block"><div class="block-title">Что требуется для запуска <button class="btn sm" data-add>${ICONS.plus} Пункт</button></div>
-          <div data-reqs>${d.requirements.map(checkRow).join('')}</div></div>`,
-      foot: '<button class="btn ghost" data-close>Отмена</button><button class="btn primary" data-save>Сохранить</button>',
-    }, (el, close) => {
-      const reqs = el.querySelector('[data-reqs]');
-      el.querySelector('[data-add]').addEventListener('click', () => reqs.insertAdjacentHTML('beforeend', checkRow()));
-      reqs.addEventListener('click', (e) => e.target.closest('[data-remove]')?.closest('[data-req]').remove());
-      el.querySelector('[data-save]').addEventListener('click', async () => {
-        const val = (n) => el.querySelector(`[name=${n}]`).value;
-        try {
-          await Api.saveDeal({
-            id: d.id, title: val('title'), companyId: val('companyId'), stage: val('stage'),
-            value: num(val('value')), pricingModel: val('pricingModel'), nextStep: val('nextStep'),
-            nextStepOn: val('nextStepOn') || null,
-            requirements: [...reqs.querySelectorAll('[data-req]')]
-              .map((row) => ({ text: row.querySelector('[data-k=text]').value.trim(), done: row.querySelector('[data-k=done]').checked }))
-              .filter((r) => r.text),
-          });
-          UI.toast('Сохранено');
-          close();
-          ctx.refresh();
-        } catch (error) {
-          UI.toast(failure(error), true);
-        }
-      });
     });
   }
 
@@ -452,13 +384,8 @@ const Screens = (() => {
     });
   }
 
-  async function openDeal(ctx, id) {
-    const deal = (await Api.deals()).find((d) => d.id === id);
-    if (deal) dealForm(ctx, deal);
-  }
-
   return {
     decisions, advertisers: companies('advertiser'), publishers: companies('publisher'), deals, costs,
-    companyForm, openDeal,
+    companyForm,
   };
 })();

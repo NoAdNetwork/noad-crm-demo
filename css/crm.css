@@ -223,3 +223,62 @@ tr.row-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
   .search input { width:100%; }
   .page-head h1 { font-size:var(--fs-2xl); }
 }
+
+/* ── Канбан воронки ───────────────────────────────────── */
+.board { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(250px, 1fr); gap:var(--s3);
+  overflow-x:auto; padding-bottom:var(--s3); align-items:start; }
+.column { background:#EFEFEC; border:1px solid var(--border); border-radius:var(--r); min-height:420px;
+  display:flex; flex-direction:column; transition:background .12s, border-color .12s; }
+.column.drop { background:#E6F0D4; border-color:#9CC85A; }
+.column.live .column-head b { color:var(--pos); }
+.column.lost .column-head b { color:var(--neg); }
+.column-head { padding:var(--s3) var(--s3) var(--s2); border-bottom:1px solid var(--border); }
+.column-head > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
+.column-head b { font-size:var(--fs-m); }
+.column-sum { color:var(--text-3); font-size:var(--fs-xs); margin-top:2px; display:flex; justify-content:space-between; }
+.column-body { padding:var(--s2); display:flex; flex-direction:column; gap:var(--s2); flex:1; }
+.column-empty { border:1px dashed var(--border-strong); border-radius:var(--r-sm); padding:var(--s5) var(--s2);
+  text-align:center; color:var(--text-3); font-size:var(--fs-s); }
+.deal-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-sm);
+  padding:var(--s3); cursor:grab; box-shadow:var(--shadow); }
+.deal-card:hover { border-color:var(--border-strong); box-shadow:0 2px 8px rgba(16,16,20,.08); }
+.deal-card.dragging { opacity:.4; }
+.deal-card.is-neg { box-shadow:inset 3px 0 0 var(--neg); }
+.deal-card.is-warn { box-shadow:inset 3px 0 0 var(--warn); }
+.deal-top { display:flex; justify-content:space-between; gap:var(--s2); align-items:baseline; }
+.deal-top b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.deal-value { font-weight:600; white-space:nowrap; }
+.deal-title { color:var(--text-2); font-size:var(--fs-s); margin-top:2px; }
+.deal-meta { color:var(--text-3); font-size:var(--fs-xs); margin-top:4px; }
+.deal-step { font-size:var(--fs-s); margin-top:6px; }
+.deal-foot { display:flex; justify-content:space-between; align-items:center; gap:var(--s2); margin-top:var(--s2);
+  padding-top:var(--s2); border-top:1px solid var(--border); font-size:var(--fs-xs); }
+.btn.ready { height:26px; padding:0 8px; font-size:var(--fs-xs); background:var(--pos-bg); border-color:var(--pos-line);
+  color:var(--pos); box-shadow:none; }
+.btn.ready:hover { background:#DDF1E5; }
+
+/* Шаги воронки в карточке сделки */
+.stepper { display:flex; list-style:none; margin:0 0 var(--s5); padding:0; gap:2px; overflow-x:auto; }
+.stepper li { flex:1; min-width:64px; padding:6px 4px; text-align:center; font-size:11px; font-weight:600;
+  line-height:1.2; background:var(--hover); color:var(--text-3); display:flex; align-items:center; justify-content:center; }
+.stepper li:first-child { border-radius:var(--r-sm) 0 0 var(--r-sm); }
+.stepper li:last-child { border-radius:0 var(--r-sm) var(--r-sm) 0; }
+.stepper li.done { background:var(--pos-bg); color:var(--pos); }
+.stepper li.current { background:var(--ink); color:#fff; }
+.timeline { list-style:none; margin:0; padding:0; }
+.timeline.pad { padding:var(--s3) var(--s5); }
+.timeline li { position:relative; padding:0 0 var(--s3) var(--s5); display:flex; flex-direction:column; }
+.timeline li::before { content:""; position:absolute; left:3px; top:6px; width:8px; height:8px; border-radius:50%;
+  background:var(--ink); }
+.timeline li:not(:last-child)::after { content:""; position:absolute; left:6px; top:16px; bottom:0; width:2px;
+  background:var(--border); }
+
+/* Карточка компании в базе */
+.back { display:inline-flex; align-items:center; gap:4px; color:var(--text-2); font-weight:500;
+  margin-bottom:var(--s3); }
+.back:hover { color:var(--text); }
+.profile-tags { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.link { color:var(--info); }
+.link:hover { text-decoration:underline; }
+.notes { padding:var(--s4) var(--s5); white-space:pre-wrap; }
+.kpi-value.neg-text { color:var(--neg); }

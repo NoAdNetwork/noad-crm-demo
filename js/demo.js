@@ -10,8 +10,9 @@ const Demo = (() => {
     (['localhost', '127.0.0.1'].includes(location.hostname) && params.has('demo'));
   if (!enabled) return null;
 
-  const KEY = 'noad-crm-demo-v1';
-  const OPEN = ['new', 'contacted', 'negotiation', 'onboarding'];
+  const KEY = 'noad-crm-demo-v2';
+  const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
+  const FLOW = [...OPEN, 'live'];
   const RUNWAY_DAYS = 7;
   const STALE_MS = 3 * 86400000;
   const role = params.get('role') === 'manager' ? 'manager' : 'admin';
@@ -44,28 +45,59 @@ const Demo = (() => {
     const exo = c('publisher', 'ExoClick', 'active',
       { balance: 9800, monthlySpend: 6000, lowBalance: 2000, balanceCheckedAt: daysAgo(1) });
     const adsterra = c('publisher', 'Adsterra', 'prospect');
-    const r = (text, done = false) => ({ text, done });
-    const d = (company, title, stage, extra = {}) => ({
-      id: id(), companyId: company.id, title, stage, value: null, pricingModel: '',
-      requirements: [], nextStep: '', nextStepOn: null, ...extra, updatedAt: now(),
-    });
+    const coin = c('advertiser', 'CoinPulse', 'prospect', {},
+      [{ name: 'Дмитрий', role: 'Head of UA', email: '', telegram: '@dima_cp', phone: '' }]);
+    const dating = c('advertiser', 'LoveMatch', 'prospect', {},
+      [{ name: 'Sofia', role: 'Partnerships', email: 'sofia@lovematch.example', telegram: '', phone: '' }]);
+    const shop = c('advertiser', 'ShopNow', 'prospect');
+    const bet = c('advertiser', 'BetZone', 'prospect',
+      {}, [{ name: 'Игорь', role: 'Affiliate manager', email: '', telegram: '@igor_bz', phone: '' }]);
+    const ed = c('advertiser', 'EduPro', 'prospect');
+    const r = (text, stage, done = false) => ({ text, done, stage });
+    // Сделка, прошедшая этапы `path` с интервалом `every` дней и стоящая на последнем `stuck` дней.
+    const d = (company, title, path, extra = {}, every = 4, stuck = 2) => {
+      const total = (path.length - 1) * every + stuck;
+      const history = path.map((stage, i) => ({ stage, enteredAt: daysAgo(total - i * every) }));
+      return {
+        id: id(), companyId: company.id, title, stage: path[path.length - 1], value: null, pricingModel: '',
+        requirements: [], nextStep: '', nextStepOn: null, lostReason: '', ...extra,
+        history, stageChangedAt: history[history.length - 1].enteredAt, updatedAt: now(),
+      };
+    };
+    const upTo = (stage) => FLOW.slice(0, FLOW.indexOf(stage) + 1);
     const cost = (category, name, amount, period = 'monthly') => ({
       id: id(), category, name, amount, period, active: true, notes: '', updatedAt: now(),
     });
     return {
-      companies: [acme, beta, game, vpn, propeller, exo, adsterra],
+      companies: [acme, beta, game, vpn, coin, dating, shop, bet, ed, propeller, exo, adsterra],
       deals: [
-        d(vpn, 'VPN — push CPA', 'negotiation', {
+        d(ed, 'EduPro — курсы, Tier-2', ['lead'], { value: 2000 }, 0, 1),
+        d(shop, 'ShopNow — e-com, RU/KZ', ['lead'], { value: 4000, nextStep: 'Найти ЛПР', nextStepOn: day(2) }, 0, 3),
+        d(coin, 'CoinPulse — крипто-приложение', upTo('qualification'), {
+          value: 15000, pricingModel: 'CPA', nextStep: 'Проверить лицензию и гео', nextStepOn: day(1),
+          requirements: [r('Вертикаль и гео нам подходят', 'qualification', true), r('Проверка компании пройдена', 'qualification')],
+        }),
+        d(vpn, 'VPN Shield — push CPA', upTo('negotiation'), {
           value: 8000, pricingModel: 'CPA', nextStep: 'Согласовать payout', nextStepOn: day(-2),
-          requirements: [r('Проверка компании и вертикали', true), r('Договор подписан'), r('Постбек настроен и проверен')],
+          requirements: [r('Согласованы модель оплаты и ставка', 'negotiation'), r('Согласована наша наценка', 'negotiation')],
         }),
-        d(acme, 'Acme — расширение на LATAM', 'onboarding', {
-          value: 5000, pricingModel: 'CPM', nextStep: 'Пополнить баланс', nextStepOn: day(1),
-          requirements: [r('Договор подписан', true), r('Предоплата / баланс пополнен'), r('Таргетинг и ставки согласованы', true)],
+        d(dating, 'LoveMatch — дейтинг, Tier-1', upTo('negotiation'), { value: 6000, pricingModel: 'CPM' }, 3, 18),
+        d(bet, 'BetZone — беттинг, LATAM', upTo('contract'), {
+          value: 10000, pricingModel: 'CPA', nextStep: 'Получить предоплату', nextStepOn: day(3),
+          requirements: [r('Договор подписан', 'contract', true), r('Предоплата получена', 'contract')],
         }),
-        d(beta, 'BetaApps — iOS', 'launched', { value: 12000, pricingModel: 'CPA' }),
-        d(adsterra, 'Adsterra — API аккаунт', 'contacted', { nextStep: 'Запросить API-ключ', nextStepOn: day(3) }),
-        d(game, 'GameHub — новый оффер', 'new', { value: 3000 }),
+        d(acme, 'Acme — расширение на LATAM', upTo('setup'), {
+          value: 5000, pricingModel: 'CPM', nextStep: 'Настроить постбек', nextStepOn: day(1),
+          requirements: [r('Офферы и лендинги получены', 'setup', true), r('Постбек настроен и проверен', 'setup', true), r('Кампании созданы в сетях', 'setup', true)],
+        }),
+        d(game, 'GameHub — новый оффер', upTo('test'), {
+          value: 3000, pricingModel: 'CPA', nextStep: 'Разобрать конверсии с клиентом', nextStepOn: day(0),
+          requirements: [r('Тестовый бюджет открутился', 'test', true), r('Конверсии приходят', 'test')],
+        }),
+        d(beta, 'BetaApps — iOS', upTo('live'), { value: 12000, pricingModel: 'CPA' }, 5, 20),
+        d(acme, 'Acme — Tier-1 push', upTo('live'), { value: 9000, pricingModel: 'CPM' }, 6, 40),
+        d(shop, 'ShopNow — первый заход', ['lead', 'qualification', 'lost'], { value: 1500, lostReason: 'Маленький бюджет' }, 5, 30),
+        d(adsterra, 'Adsterra — API аккаунт', ['lead', 'qualification'], { nextStep: 'Запросить API-ключ', nextStepOn: day(3) }),
       ],
       costs: [
         cost('payroll', 'Менеджер по работе с клиентами', 2500),
@@ -160,10 +192,25 @@ const Demo = (() => {
       return db.deals.map(dealView).sort((a, b) =>
         (a.nextStepOn || '9999').localeCompare(b.nextStepOn || '9999') || b.updatedAt.localeCompare(a.updatedAt));
     },
+    // Как на сервере: смена этапа пишет историю, «Работает» делает потенциального клиента рабочим.
     async saveDeal(input) {
       required(input.title, 'title');
-      if (!db.companies.some((c) => c.id === input.companyId)) throw new DemoError(404, 'not_found');
-      return dealView(upsert(db.deals, input));
+      const company = db.companies.find((c) => c.id === input.companyId);
+      if (!company) throw new DemoError(404, 'not_found');
+      const old = db.deals.find((x) => x.id === input.id);
+      const moved = !old || old.stage !== input.stage;
+      const { companyName, companyKind, contacts, ...data } = input;
+      const history = [...(old?.history || [])];
+      if (moved) history.push({ stage: data.stage, enteredAt: now() });
+      const saved = upsert(db.deals, {
+        ...data, history, lostReason: data.stage === 'lost' ? data.lostReason || '' : '',
+        stageChangedAt: moved ? now() : old.stageChangedAt,
+      });
+      if (moved && data.stage === 'live' && company.status === 'prospect') {
+        company.status = 'active';
+        persist();
+      }
+      return dealView(saved);
     },
     async costs() {
       adminOnly();

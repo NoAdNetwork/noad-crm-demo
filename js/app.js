@@ -5,12 +5,12 @@
   const app = document.getElementById('app');
   const MENU = [
     ['Обзор', [['decisions', 'Центр решений']]],
-    ['Клиенты', [['advertisers', 'Рекламодатели'], ['publishers', 'Сети и паблишеры']]],
-    ['Продажи', [['deals', 'Сделки']]],
+    ['Продажи', [['funnel', 'Воронка'], ['deals', 'Все сделки']]],
+    ['База', [['advertisers', 'Рекламодатели'], ['publishers', 'Сети и паблишеры']]],
     ['Финансы', [['costs', 'Расходы', 'admin']]],
   ];
   // Старые ссылки первой версии.
-  const ALIASES = { summary: 'decisions', funnel: 'deals' };
+  const ALIASES = { summary: 'decisions' };
   let me = null;
   const state = {};
 
@@ -25,17 +25,20 @@
   const allowed = () => MENU.map(([title, items]) => [title, items.filter(([, , role]) => !role || me.role === role)])
     .filter(([, items]) => items.length);
 
+  // #advertisers/<id> — карточка компании внутри раздела базы.
   function current() {
-    const hash = location.hash.slice(1);
+    const [hash, id] = location.hash.slice(1).split('/');
     const route = ALIASES[hash] || hash;
-    return allowed().some(([, items]) => items.some(([k]) => k === route)) ? route : 'decisions';
+    const known = allowed().some(([, items]) => items.some(([k]) => k === route));
+    return known ? { route, id: ['advertisers', 'publishers'].includes(route) ? id : undefined } : { route: 'decisions' };
   }
 
   async function render() {
-    const route = current();
-    if (state.route !== route) {
+    const { route, id } = current();
+    const key = route + '/' + (id || '');
+    if (state.key !== key) {
       Object.keys(state).forEach((k) => delete state[k]);
-      state.route = route;
+      state.key = key;
     }
     app.innerHTML = `
       <aside class="side">
@@ -61,7 +64,9 @@
     });
     const screen = document.getElementById('screen');
     try {
-      await Screens[route](screen, ctx);
+      if (id) await Profile.page(screen, ctx, route === 'advertisers' ? 'advertiser' : 'publisher', id);
+      else if (route === 'funnel') await Funnel.board(screen, ctx);
+      else await Screens[route](screen, ctx);
     } catch (error) {
       if (error.status === 401) return login();
       screen.innerHTML = `<div class="callout neg"><b>Не удалось загрузить данные</b>${UI.esc(error.message)}</div>`;
@@ -73,9 +78,11 @@
     get me() { return me; },
     state,
     refresh: render,
-    open(kind, id) {
-      if (kind === 'company') Screens.companyForm(ctx, null, id);
-      else if (kind === 'deal') Screens.openDeal(ctx, id);
+    // Компания открывается страницей в базе, сделка — карточкой поверх текущего экрана.
+    async open(kind, id) {
+      if (kind === 'deal') return Funnel.openDeal(ctx, id);
+      const company = await Api.company(id);
+      location.hash = `${company.kind}s/${id}`;
     },
   };
 
@@ -92,7 +99,7 @@
       set('decisions', s.atRisk.length + late, true);
       set('advertisers', issues('advertiser'), true);
       set('publishers', issues('publisher'), true);
-      set('deals', late || s.pipeline.open, late > 0);
+      set('funnel', late || s.pipeline.open, late > 0);
     } catch (_) { /* счётчики необязательны */ }
   }
 

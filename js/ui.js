@@ -25,11 +25,35 @@ const UI = (() => {
 
   const STATUS = { prospect: 'Потенциальный', active: 'Рабочий', paused: 'На паузе', archived: 'В архиве' };
   const STATUS_TAG = { prospect: 'info', active: 'pos', paused: 'warn', archived: '' };
+  // Флоу рекламодателя: лид → … → работает; отказ возможен с любого этапа.
   const STAGES = {
-    new: 'Новая', contacted: 'Первый контакт', negotiation: 'Переговоры',
-    onboarding: 'Подготовка к запуску', launched: 'Запущена', lost: 'Отказ',
+    lead: 'Лид', qualification: 'Квалификация', negotiation: 'Переговоры', contract: 'Договор и оплата',
+    setup: 'Настройка', test: 'Тест', live: 'Работает', lost: 'Отказ',
   };
-  const OPEN = ['new', 'contacted', 'negotiation', 'onboarding'];
+  const OPEN = ['lead', 'qualification', 'negotiation', 'contract', 'setup', 'test'];
+  const FLOW = [...OPEN, 'live'];
+  // Что должно быть сделано, чтобы уйти с этапа дальше.
+  const EXIT = {
+    lead: ['Найден ЛПР и его контакт', 'Понятен продукт и вертикаль'],
+    qualification: ['Вертикаль и гео нам подходят', 'Проверка компании пройдена', 'Бюджет не ниже минимального'],
+    negotiation: ['Согласованы модель оплаты и ставка', 'Согласована наша наценка'],
+    contract: ['Договор подписан', 'Предоплата получена'],
+    setup: ['Офферы и лендинги получены', 'Постбек настроен и проверен', 'Кампании созданы в сетях'],
+    test: ['Тестовый бюджет открутился', 'Конверсии приходят', 'Клиент подтвердил качество'],
+  };
+  const LOST_REASONS = [
+    'Не подошла вертикаль или гео', 'Маленький бюджет', 'Не договорились по цене',
+    'Ушёл к конкуренту', 'Пропал, не отвечает', 'Не прошёл проверку', 'Другое',
+  ];
+  // Дольше — сделка «зависла» на этапе.
+  const STUCK_DAYS = 14;
+  const onStage = (d) => (d.stageChangedAt ? Math.max(0, Math.floor((Date.now() - new Date(d.stageChangedAt)) / 86400000)) : 0);
+  // Чек-лист этапа: пункты, привязанные к этапу, плюс шаблон EXIT для тех, что ещё не добавлены.
+  function stageChecklist(d, stage = d.stage) {
+    const own = d.requirements.filter((r) => r.stage === stage);
+    const missing = (EXIT[stage] || []).filter((t) => !own.some((r) => r.text === t)).map((text) => ({ text, done: false, stage }));
+    return [...own, ...missing];
+  }
   const CATEGORIES = { payroll: 'ФОТ', subscription: 'Подписки', infrastructure: 'Инфраструктура', other: 'Прочее' };
   const PERIODS = { monthly: 'Ежемесячно', yearly: 'Ежегодно', one_time: 'Разово' };
   const KIND = { advertiser: 'Рекламодатель', publisher: 'Сеть / паблишер' };
@@ -63,7 +87,15 @@ const UI = (() => {
   }
 
   function dealProblem(d) {
-    if (!OPEN.includes(d.stage) || !d.nextStepOn || d.nextStepOn >= today()) return null;
+    if (!OPEN.includes(d.stage)) return null;
+    if (!d.nextStepOn || d.nextStepOn >= today()) {
+      const n = onStage(d);
+      return n > STUCK_DAYS ? {
+        level: 'warn', label: 'Зависла',
+        text: `${days(n)} на этапе «${STAGES[d.stage]}» без движения`,
+        action: 'Решить: двигать дальше или закрыть отказом',
+      } : null;
+    }
     const late = daysBetween(d.nextStepOn, today());
     const contact = d.contacts[0];
     return {
@@ -80,7 +112,10 @@ const UI = (() => {
     decisions: I('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
     advertisers: I('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
     publishers: I('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
-    deals: I('<path d="M3 4h18l-7 8v6l-4 2v-8z"/>'),
+    deals: I('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+    funnel: I('<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>'),
+    back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
     costs: I('<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
     search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -127,7 +162,7 @@ const UI = (() => {
 
   return {
     esc, money, days, date, ago, today, daysBetween, num, toast, options, drawer, tag,
-    problems, health, dealProblem, ICONS,
-    STATUS, STATUS_TAG, STAGES, OPEN, CATEGORIES, PERIODS, KIND,
+    problems, health, dealProblem, ICONS, onStage, stageChecklist,
+    STATUS, STATUS_TAG, STAGES, OPEN, FLOW, EXIT, LOST_REASONS, STUCK_DAYS, CATEGORIES, PERIODS, KIND,
   };
 })();
